@@ -210,4 +210,52 @@ kullanım kılavuzu [`docs/mcp-guide.md`](docs/mcp-guide.md)). "Otomatik
 
 ---
 
+## 9. Rakip Analizi ve Yol Haritası (2026-09-30)
+
+Aynı problemi (CLAUDE.md/AGENTS.md şişkinliği) hedefleyen açık kaynak
+araçlar tarandı (GitHub arama + README incelemesi). Doğrudan rakipler:
+[please-optimize-my-claude](https://github.com/thedoublejay/please-optimize-my-claude)
+(hiyerarşi farkındalığı, git-blame bayatlık tespiti, secret taraması),
+[instrlint](https://github.com/jed1978/instrlint) (config-overlap/"ölü
+kural" tespiti, tek skor, SARIF/CI çıktısı), [agents-md-optimizer](https://github.com/CaesiumY/agents-md-optimizer)
+(kaynak koddan "gotcha mining" ile dosyayı zenginleştirme),
+[rulesmith](https://github.com/seesawz/rulesmith) (makine ile uygulanabilir
+kuralları prompt'tan çıkarıp hook/linter/CI'a taşıma), [Compresr](https://github.com/Compresr-ai/compresr-vscode)
+(VS Code eklentisi, diff+backup — Zarif'in zaten yaptığına en yakını).
+Genel amaçlı sıkıştırma araçları (LLMLingua, prompt-optimizer) farklı bir
+kategori: mekanik/istatistiksel sıkıştırma, dosya hiyerarşisi kavramı yok.
+
+**Zarif'in korunan farklılaştırıcıları:** `verify_retention` ile otomatik
+doğrulama+retry döngüsü (rakiplerin hiçbirinde kapalı-döngü kalite
+garantisi yok), MCP sampling ile API anahtarsız çalışma, 3 ölçütü
+birleştiren dashboard.
+
+**Tespit edilen eksikler ve öncelik sırası (birlikte kararlaştırıldı,
+sırayla uygulanacak):**
+
+```
+1. [ ] Hiyerarşi/çoklu dosya desteği — bir dizin altındaki tüm talimat
+       dosyalarını (CLAUDE.md, AGENTS.md, SKILL.md, .cursorrules, vb.)
+       keşfedip aralarındaki tekrar eden paragrafları tespit etme.
+2. [ ] Deterministik "ölü kural" tespiti — talimat dosyasındaki bir kural
+       zaten tsconfig.json/.eslintrc/.editorconfig/pyproject.toml gibi bir
+       konfigürasyon dosyasıyla uygulanıyorsa işaretleme (LLM gerekmez).
+3. [ ] Secret/PII taraması — API anahtarı, private key, iç URL gibi
+       yanlışlıkla commit edilmiş hassas bilgiyi talimat dosyasında bulma.
+4. [ ] Çelişki tespiti — aynı dosyada birbirini yalanlayan iki kuralı
+       (deterministik/heuristik, LLM'siz, "deneysel" olarak) işaretleme.
+5. [ ] CI/SARIF entegrasyonu — GitHub Code Scanning'e uygun çıktı formatı.
+6. [ ] Gotcha mining / zenginleştirme — ERTELENDİ. Kaynak koddan eksik
+       operasyonel bilgiyi bulup dosyaya EKLEME, Prensip 1'i ("sadece
+       çıkar/taşı/sadeleştir, yeni bilgi ekleme") doğrudan ihlal ediyor.
+       Ürün kararı gerektiriyor — belki ayrı, açıkça "öneri modu" olarak
+       (otomatik yazılmaz, insan onayına düşer) ileride değerlendirilebilir.
+```
+
+1-5 numaralı maddeler `zarif hierarchy <dizin>` ve `zarif audit <dosya>`
+komutları altında uygulanacak (bkz. README/docs güncellemeleri, ilerledikçe
+yukarıdaki kutucuklar işaretlenecek).
+
+---
+
 *Bu doküman canlı bağlamdır. Her önemli karar burada güncellenmeli.*

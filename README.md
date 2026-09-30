@@ -97,6 +97,19 @@ sampling API'sinin (`SamplingMessage`, `ctx.session.create_message(...)`)
 tam imzası kurulu bir paket karşısında test edilmedi; resmi
 [MCP Python SDK](https://modelcontextprotocol.io/) dokümanına göre yazıldı.
 
+## Yedeği geri yükleme
+
+`zarif edit` her yazmadan önce orijinal dosyayı `<dosya>.bak` (veya çakışma
+varsa `.bak1`, `.bak2`, ...) olarak yedekler. Son yapılan değişikliği geri
+almak için:
+
+```powershell
+zarif restore CLAUDE.md
+```
+
+En son alınan yedeği bulup onay sonrası dosyanın üzerine yazar; `--yes`/`-y`
+ile onay adımı atlanabilir.
+
 ## Ölçüm (benchmark)
 
 Spec'teki 3 ölçütten ilk ikisi (token azalması, bilgi korunumu) gömülü
@@ -113,6 +126,13 @@ düzenlenmiş metinle çalıştırıp karşılaştırır (bkz.
 
 ```powershell
 zarif benchmark --editor-model ollama:llama3.1 --downstream
+```
+
+Sonucu bir script/CI adımında işlemek isterseniz `--json` ile makine-okunur
+çıktı alabilirsiniz (insan-okunur tablo yerine):
+
+```powershell
+zarif benchmark --editor-model ollama:llama3.1 --downstream --json > sonuc.json
 ```
 
 ## Testler

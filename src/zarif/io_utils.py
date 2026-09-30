@@ -64,6 +64,25 @@ def make_backup(path: str) -> str:
     return str(backup_path)
 
 
+def find_latest_backup(path: str) -> str | None:
+    """Return the most recently created `.bak`/`.bakN` file for path, or None."""
+    p = Path(path)
+    prefix = f"{p.name}.bak"
+    latest: tuple[int, Path] | None = None
+    for candidate in p.parent.glob(f"{prefix}*"):
+        suffix = candidate.name[len(prefix):]
+        if suffix and not suffix.isdigit():
+            continue
+        order = int(suffix) if suffix else 0
+        if latest is None or order > latest[0]:
+            latest = (order, candidate)
+    return str(latest[1]) if latest else None
+
+
+def restore_from_backup(backup_path: str, target_path: str) -> None:
+    Path(target_path).write_bytes(Path(backup_path).read_bytes())
+
+
 def protect_blocks(text: str) -> tuple[str, dict[str, str]]:
     """Replace fenced code blocks and tables with placeholder tokens so an LLM edit can't touch them."""
     mapping: dict[str, str] = {}

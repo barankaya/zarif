@@ -3,10 +3,12 @@ from pathlib import Path
 from zarif.io_utils import (
     detect_encoding,
     detect_newline,
+    find_latest_backup,
     make_backup,
     protect_blocks,
     read_source,
     restore_blocks,
+    restore_from_backup,
     write_target,
 )
 
@@ -63,3 +65,37 @@ def test_make_backup_creates_copy(tmp_path: Path):
 
     assert Path(backup_path).read_text(encoding="utf-8") == "content"
     assert backup_path != str(path)
+
+
+def test_find_latest_backup_returns_none_when_missing(tmp_path: Path):
+    path = tmp_path / "doc.md"
+    path.write_text("content", encoding="utf-8")
+
+    assert find_latest_backup(str(path)) is None
+
+
+def test_find_latest_backup_returns_highest_numbered_suffix(tmp_path: Path):
+    path = tmp_path / "doc.md"
+    path.write_text("v3", encoding="utf-8")
+
+    first = make_backup(str(path))  # doc.md.bak
+    second = make_backup(str(path))  # doc.md.bak1
+    third = make_backup(str(path))  # doc.md.bak2
+
+    assert find_latest_backup(str(path)) == third
+    assert {first, second, third} == {
+        str(path) + ".bak",
+        str(path) + ".bak1",
+        str(path) + ".bak2",
+    }
+
+
+def test_restore_from_backup_overwrites_target(tmp_path: Path):
+    path = tmp_path / "doc.md"
+    path.write_text("original", encoding="utf-8")
+    backup_path = make_backup(str(path))
+
+    path.write_text("changed", encoding="utf-8")
+    restore_from_backup(backup_path, str(path))
+
+    assert path.read_text(encoding="utf-8") == "original"

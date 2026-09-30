@@ -1,7 +1,8 @@
-"""`zarif edit` and `zarif benchmark` CLI commands."""
+"""`zarif edit`, `zarif restore` and `zarif benchmark` CLI commands."""
 
 from __future__ import annotations
 
+import json
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -11,7 +12,7 @@ from rich.console import Console
 
 from .benchmark.downstream import get_task_for, run_downstream
 from .graph import build_graph
-from .io_utils import read_source
+from .io_utils import find_latest_backup, read_source, restore_from_backup
 from .models import get_chat_model
 from .tokens import token_report
 
@@ -68,6 +69,27 @@ def edit(
 
 
 @app.command()
+def restore(
+    file: Path = typer.Argument(..., exists=True, readable=True, help="Yedeği geri yüklenecek dosya."),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Onayı atla, doğrudan geri yükle."),
+) -> None:
+    """Bir dosyayı en son alınan `.bak` yedeğinden geri yükler."""
+    backup_path = find_latest_backup(str(file))
+    if backup_path is None:
+        console.print(f"[red]Yedek bulunamadı: {file}.bak[/red]")
+        raise typer.Exit(1)
+
+    console.print(f"[bold]Zarif[/bold] — {backup_path} içeriği {file} üzerine geri yazılacak.")
+    approved = yes or typer.confirm("Devam edeyim mi?", default=False)
+    if not approved:
+        console.print("[yellow]İptal edildi.[/yellow]")
+        return
+
+    restore_from_backup(backup_path, str(file))
+    console.print(f"[green]Geri yüklendi.[/green] Kaynak yedek: {backup_path}")
+
+
+@app.command()
 def benchmark(
     directory: Optional[Path] = typer.Option(
         None, "--dir", help="Örnek dosyaların bulunduğu klasör (varsayılan: gömülü örnekler)."
@@ -80,6 +102,9 @@ def benchmark(
     ),
     agent_model: Optional[str] = typer.Option(
         None, "--agent-model", help="Aşağı akış görevinde 'agent' olarak kullanılacak model. Boşsa editor-model kullanılır."
+    ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Sonucu insan-okunur tablo yerine makine-okunur JSON olarak yazdır."
     ),
 ) -> None:
     """Örnek dosyalar üzerinde token azalması ve bilgi korunumunu ölçer, hiçbir dosyaya yazmaz."""
@@ -120,6 +145,23 @@ def benchmark(
                 task_scores = (raw_result, edited_result)
 
         rows.append((sample.name, report, result.get("sufficient"), task_scores))
+
+    if as_json:
+        payload = []
+        for name, report, sufficient, task_scores in rows:
+            entry: dict = {"name": name, "tokens": report, "sufficient": bool(sufficient)}
+            if task_scores is not None:
+                raw_result, edited_result = task_scores
+                entry["downstream"] = {
+                    "raw": {"qa_score": list(raw_result.qa_score), "scenario_score": list(raw_result.scenario_score)},
+                    "edited": {
+                        "qa_score": list(edited_result.qa_score),
+                        "scenario_score": list(edited_result.scenario_score),
+                    },
+                }
+            payload.append(entry)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
 
     console.print("\n[bold]Benchmark sonucu (dosyalara yazma yapılmadı)[/bold]")
     for name, report, sufficient, task_scores in rows:

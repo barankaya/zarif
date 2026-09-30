@@ -50,6 +50,43 @@ paylaşmaya devam edeceğim.
 
 ---
 
+## Post 2 — MCP entegrasyonu tamamlandı
+
+İlk paylaşımda söz verdiğim MCP (Model Context Protocol) entegrasyonu
+Zarif'te artık tam çalışır durumda — ve planlanandan erken (v0.3 yerine
+v0.1'e çekerek) tamamlandı.
+
+**Neden önemli?** Zarif'i bağımsız bir model kurulumuna (Ollama, API
+anahtarı vb.) hiç ihtiyaç duymadan kullanabiliyorsunuz artık. VS Code
+Copilot Chat, Claude Desktop ya da başka bir MCP host'a bağladığınızda,
+Zarif editör/doğrulayıcı adımları için MCP'nin **sampling** yeteneğiyle
+doğrudan o host'un kendi modelini kullanıyor.
+
+Sunulan 4 araç, tam bir yaşam döngüsü kapsıyor:
+
+- `zarif_propose_edit` — sadeleştirme önerisi üretir, diff döner
+- `zarif_apply_edit` — onaylanan öneriyi yedek alarak dosyaya yazar
+- `zarif_discard_edit` — reddedilen bir öneriyi bellekten temizler
+- `zarif_restore_edit` — en son yedekten geri yükler (CLI'daki `zarif
+  restore` ile aynı mekanizma, MCP tarafında da erişilebilir)
+
+Bu arada CLI tarafına da iki komut eklendi: `zarif restore` (son yedeği
+geri yükler) ve `zarif dashboard` (token azalması, bilgi korunumu ve aşağı
+akış performansı ölçütlerinin tümünü tek bir HTML panosunda birleştirir).
+Benchmark seti de 5 gerçekçi (bilinçli şişirilmiş) örnek talimat dosyasına
+çıkarıldı.
+
+Detaylı kurulum ve host konfigürasyonu için: [docs/mcp-guide.md](../docs/mcp-guide.md).
+
+Sırada: gerçek bir modelle çalıştırılmış ölçüm sonuçları — şimdiye kadar
+geliştirme tamamen ağ erişimi olmayan bir ortamda yapıldı, bu yüzden
+sadece statik/sözdizimsel doğrulama mümkündü. Bir sonraki post, gerçek
+sayılarla gelecek.
+
+#YapayZeka #AIAgents #LLM #DeveloperTools #MCP #LangGraph #OpenSource
+
+---
+
 ### Kaynaklar
 
 - LangGraph — <https://github.com/langchain-ai/langgraph>

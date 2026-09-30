@@ -29,7 +29,7 @@ from langchain_core.runnables import RunnableLambda
 from pydantic import ConfigDict
 
 from .graph import build_graph
-from .io_utils import read_source
+from .io_utils import find_latest_backup, read_source, restore_from_backup
 from .models import get_chat_model
 from .tokens import token_report
 
@@ -168,6 +168,25 @@ def register_tools(server: Any) -> None:
             raise ValueError(f"Bilinmeyen session_id: {session_id!r} (önce zarif_propose_edit çağırın)")
         result = await asyncio.to_thread(session["graph"].invoke, None, session["config"])
         return {"written": result.get("written", False), "backup_path": result.get("backup_path")}
+
+    @server.tool()
+    async def zarif_discard_edit(session_id: str) -> dict:
+        """`zarif_propose_edit` ile açılan, uygulanmamış bir oturumu bellekten temizler.
+
+        Host, kullanıcı öneriyi reddettiğinde bu aracı çağırmalı — aksi halde
+        oturum, sunucu süreci hayatta olduğu sürece bellekte birikmeye devam eder.
+        """
+        session = _SESSIONS.pop(session_id, None)
+        return {"discarded": session is not None}
+
+    @server.tool()
+    async def zarif_restore_edit(file_path: str) -> dict:
+        """Bir dosyayı en son alınan `.bak` yedeğinden geri yükler (CLI'daki `zarif restore` ile aynı davranış)."""
+        backup_path = find_latest_backup(file_path)
+        if backup_path is None:
+            raise ValueError(f"Yedek bulunamadı: {file_path}.bak")
+        restore_from_backup(backup_path, file_path)
+        return {"restored": True, "backup_path": backup_path}
 
 
 def create_server() -> Any:

@@ -86,8 +86,8 @@ Zarif, bağımsız bir MCP (Model Context Protocol) sunucusudur; hangi ajanla
 (VS Code Copilot Chat, Claude Desktop, başka bir MCP host — fark etmez)
 çalıştırılırsa, editör/doğrulayıcı LLM çağrılarını MCP'nin "sampling"
 yeteneğiyle o ajanın kendi modeline devreder — zarif'in ayrıca bir
-API anahtarına/yerel model kurulumuna ihtiyacı olmaz. `zarif_propose_edit`
-/ `zarif_apply_edit` araçlarını sunar.
+API anahtarına/yerel model kurulumuna ihtiyacı olmaz. `zarif_propose_edit`,
+`zarif_apply_edit`, `zarif_discard_edit` ve `zarif_restore_edit` araçlarını sunar.
 
 Host konfigürasyonu, tam araç referansı, örnek istek/yanıtlar ve sorun
 giderme için: **[docs/mcp-guide.md](docs/mcp-guide.md)**.

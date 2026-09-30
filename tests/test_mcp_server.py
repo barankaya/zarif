@@ -110,3 +110,51 @@ def test_zarif_propose_edit_with_explicit_model_skips_sampling(tmp_path: Path, m
     assert "session_id" in result
     assert "token_report" in result
     assert result["session_id"] in mcp_server._SESSIONS
+
+
+def test_zarif_discard_edit_removes_session_without_writing(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(mcp_server, "_SESSIONS", {"abc": {"graph": None, "config": None}})
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_discard_edit"]("abc"))
+
+    assert result == {"discarded": True}
+    assert "abc" not in mcp_server._SESSIONS
+
+
+def test_zarif_discard_edit_unknown_session_is_a_noop():
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_discard_edit"]("does-not-exist"))
+
+    assert result == {"discarded": False}
+
+
+def test_zarif_restore_edit_without_backup_raises(tmp_path: Path):
+    target = tmp_path / "doc.md"
+    target.write_text("content", encoding="utf-8")
+
+    server = _FakeServer()
+    register_tools(server)
+
+    with pytest.raises(ValueError, match="Yedek bulunamadı"):
+        asyncio.run(server.registered["zarif_restore_edit"](str(target)))
+
+
+def test_zarif_restore_edit_restores_latest_backup(tmp_path: Path):
+    from zarif.io_utils import make_backup
+
+    target = tmp_path / "doc.md"
+    target.write_text("original", encoding="utf-8")
+    backup_path = make_backup(str(target))
+    target.write_text("changed", encoding="utf-8")
+
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_restore_edit"](str(target)))
+
+    assert result == {"restored": True, "backup_path": backup_path}
+    assert target.read_text(encoding="utf-8") == "original"

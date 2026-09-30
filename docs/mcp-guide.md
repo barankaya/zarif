@@ -165,6 +165,44 @@ Dönüş:
 Bilinmeyen/kullanılmış bir `session_id` verilirse hata döner
 (`Bilinmeyen session_id: ... (önce zarif_propose_edit çağırın)`).
 
+### `zarif_discard_edit`
+
+`zarif_propose_edit` ile açılan, henüz uygulanmamış bir session'ı dosyaya
+hiçbir şey yazmadan bellekten temizler. Kullanıcı öneriyi reddettiğinde host
+bunu çağırmalı — aksi halde session, sunucu süreci hayatta olduğu sürece
+bellekte birikmeye devam eder (bkz. Bölüm 10).
+
+| Parametre | Tip | Açıklama |
+|---|---|---|
+| `session_id` | `string` | `zarif_propose_edit`'in döndürdüğü id. |
+
+Dönüş:
+
+```json
+{ "discarded": true }
+```
+
+Bilinmeyen bir `session_id` verilirse hata vermez, `{"discarded": false}` döner
+(idempotent — host'un temizlik çağrısını iki kez yapması güvenlidir).
+
+### `zarif_restore_edit`
+
+`zarif_apply_edit` ile yazılmış bir dosyayı en son alınan `.bak` yedeğinden
+geri yükler — CLI'daki `zarif restore` komutunun MCP karşılığı. Yanlış
+onaylanmış bir değişikliği geri almak için kullanılır.
+
+| Parametre | Tip | Açıklama |
+|---|---|---|
+| `file_path` | `string` | Geri yüklenecek dosyanın yolu (session_id değil). |
+
+Dönüş:
+
+```json
+{ "restored": true, "backup_path": "CLAUDE.md.bak" }
+```
+
+Yedek bulunamazsa hata döner (`Yedek bulunamadı: <dosya>.bak`).
+
 ## 6. Uçtan uca örnek akış
 
 Host'unuzdaki sohbette (ör. "CLAUDE.md dosyasını sadeleştir" dediğinizde
@@ -176,7 +214,10 @@ ajan şu adımları izler):
    veya bir onay istemiyle yürütür).
 3. Ajan size diff'i gösterir, "bu değişiklikleri uygulayayım mı?" diye sorar.
 4. Onaylarsanız ajan `zarif_apply_edit(session_id="...")` çağırır, dosya
-   yedeklenip yazılır.
+   yedeklenip yazılır. Reddederseniz ajan `zarif_discard_edit(session_id="...")`
+   çağırıp session'ı temizler.
+5. Yazılan sonuçtan memnun kalmazsanız `zarif_restore_edit(file_path="CLAUDE.md")`
+   ile bir önceki haline geri dönebilirsiniz.
 
 ## 7. Sampling yerine sabit bir model kullanma
 
@@ -199,7 +240,11 @@ gerekir.
   ayrı ve açık bir `zarif_apply_edit` çağrısıyla gerçekleşir. Bu, CLI'daki
   `interrupt_before=["write"]` onay noktasının MCP karşılığıdır.
 - `zarif_apply_edit` öncesinde her zaman bir `.bak` yedeği alınır
-  (bkz. `io_utils.make_backup`).
+  (bkz. `io_utils.make_backup`); `zarif_restore_edit` bu yedeği geri
+  yüklemek için kullanılabilir.
+- Reddedilen öneriler için `zarif_discard_edit` çağrılmazsa session bellekte
+  kalır — uzun süre çalışan bir sunucuda çok sayıda reddedilen öneri birikimli
+  bellek kullanımına yol açabilir (bkz. Bölüm 10).
 - Sampling isteklerinin içeriği (dosyanızın metni) host'a ve host'un bağlı
   olduğu modele gönderilir — hassas içerikli dosyalarda host'unuzun veri
   işleme politikasını göz önünde bulundurun.
@@ -230,3 +275,5 @@ gerekir.
   destekler mantığıyla tasarlanmadı — aynı dosya için art arda birden fazla
   `zarif_propose_edit` çağrısı birden fazla bağımsız session üretir, hepsi
   ayrı ayrı `zarif_apply_edit` ile uygulanabilir (son yazan kazanır).
+- `zarif_discard_edit` çağrılmayan session'lar, sunucu süreci sonlanana kadar
+  bellekte kalır — otomatik bir zaman aşımı/temizlik mekanizması yok.

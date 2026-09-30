@@ -159,12 +159,12 @@ pytest
 
 ```
 src/zarif/
-  cli.py             Typer CLI: `edit`, `benchmark` ve `serve` komutları
+  cli.py             Typer CLI: `edit`, `restore`, `benchmark`, `dashboard`, `serve` komutları
   io_utils.py        Encoding/satır sonu koruma, yedekleme, kod/tablo koruma
   diffing.py         Unified diff üretimi ve renkli terminal çıktısı
   tokens.py          Token sayımı (tiktoken + heuristik fallback)
   models.py          Sağlayıcıdan bağımsız chat model factory (ollama/openai)
-  mcp_server.py      MCP sunucusu: sampling tabanlı model, propose/apply araçları
+  mcp_server.py      MCP sunucusu: sampling tabanlı model, propose/apply/discard/restore araçları
   graph/              LangGraph düğümleri, prompt'lar, structured output şemaları
   benchmark/samples/  Örnek (bilinçli şişirilmiş) talimat dosyaları (5 dosya)
   benchmark/dashboard.py  Tüm ölçütleri birleştiren HTML pano render'ı

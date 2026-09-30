@@ -105,7 +105,7 @@ açılır):
 ```
 
 Kaydettikten sonra Claude Desktop'ı yeniden başlatın; araç çubuğunda
-"zarif" sunucusunu ve iki aracını görmelisiniz.
+"zarif" sunucusunu ve araçlarını görmelisiniz.
 
 ### Diğer MCP host'ları
 

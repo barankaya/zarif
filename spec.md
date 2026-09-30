@@ -148,11 +148,17 @@ Bölümler birbirinden bağımsızsa paralel işlenebilir (paralel ayrıştırma
 - parse, extract_critical, propose_edit, verify_retention, human_review, write
 - Diff çıktısı ve onay akışı
 - Yedek alma, encoding koruma
+- zarif restore <dosya.md> komutu — son .bak yedeğinden geri yükleme
 - Sağlayıcıdan bağımsız model arayüzü (yerel ve API)
 - Token ölçümü (öncesi/sonrası)
 - Örnek benchmark seti: 5 talimat dosyası, her biri için aşağı akış görevi
   (bkz. src/zarif/benchmark/samples/, src/zarif/benchmark/downstream.py)
-- MCP server modu (zarif serve) — planlanandan erken öne çekildi, bkz. aşağı
+- zarif benchmark --json — makine-okunur çıktı (CI/script entegrasyonu için)
+- zarif dashboard — token/korunum/aşağı akış ölçütlerini tek bir HTML
+  panosunda + terminal tablosunda birleştirir (bkz. src/zarif/benchmark/dashboard.py)
+- MCP server modu (zarif serve) — planlanandan erken öne çekildi, bkz. aşağı;
+  zarif_propose_edit/zarif_apply_edit/zarif_discard_edit/zarif_restore_edit
+  araçlarının tümünü sunar (propose→apply/discard→restore tam yaşam döngüsü)
 ```
 
 ### Bilinçli Olarak Dışarıda

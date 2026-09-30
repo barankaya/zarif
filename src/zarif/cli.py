@@ -9,7 +9,9 @@ from typing import Optional
 
 import typer
 from rich.console import Console
+from rich.table import Table
 
+from .benchmark.dashboard import BenchmarkRow, format_score, render_html
 from .benchmark.downstream import get_task_for, run_downstream
 from .graph import build_graph
 from .io_utils import find_latest_backup, read_source, restore_from_backup
@@ -89,31 +91,15 @@ def restore(
     console.print(f"[green]Geri yüklendi.[/green] Kaynak yedek: {backup_path}")
 
 
-@app.command()
-def benchmark(
-    directory: Optional[Path] = typer.Option(
-        None, "--dir", help="Örnek dosyaların bulunduğu klasör (varsayılan: gömülü örnekler)."
-    ),
-    editor_model: str = typer.Option("ollama:llama3.1", "--editor-model", help=_EDITOR_MODEL_HELP),
-    verifier_model: Optional[str] = typer.Option(None, "--verifier-model"),
-    max_attempts: int = typer.Option(2, "--max-attempts", min=1),
-    downstream: bool = typer.Option(
-        False, "--downstream/--no-downstream", help="Kayıtlı görev seti varsa aşağı akış performansını da ölç (ekstra model çağrısı gerektirir)."
-    ),
-    agent_model: Optional[str] = typer.Option(
-        None, "--agent-model", help="Aşağı akış görevinde 'agent' olarak kullanılacak model. Boşsa editor-model kullanılır."
-    ),
-    as_json: bool = typer.Option(
-        False, "--json", help="Sonucu insan-okunur tablo yerine makine-okunur JSON olarak yazdır."
-    ),
-) -> None:
-    """Örnek dosyalar üzerinde token azalması ve bilgi korunumunu ölçer, hiçbir dosyaya yazmaz."""
-    base = directory or _SAMPLES_DIR
-    files = sorted(base.glob("*.md"))
-    if not files:
-        console.print(f"[red]Örnek dosya bulunamadı: {base}[/red]")
-        raise typer.Exit(1)
-
+def _compute_benchmark_rows(
+    files: list[Path],
+    editor_model: str,
+    verifier_model: Optional[str],
+    max_attempts: int,
+    downstream: bool,
+    agent_model: Optional[str],
+) -> list[tuple[str, dict, Optional[bool], Optional[tuple]]]:
+    """Run parse→propose→verify for each sample file, optionally scoring downstream tasks."""
     editor = get_chat_model(editor_model)
     verifier = get_chat_model(verifier_model or editor_model)
     graph = build_graph(editor, verifier)
@@ -145,6 +131,35 @@ def benchmark(
                 task_scores = (raw_result, edited_result)
 
         rows.append((sample.name, report, result.get("sufficient"), task_scores))
+    return rows
+
+
+@app.command()
+def benchmark(
+    directory: Optional[Path] = typer.Option(
+        None, "--dir", help="Örnek dosyaların bulunduğu klasör (varsayılan: gömülü örnekler)."
+    ),
+    editor_model: str = typer.Option("ollama:llama3.1", "--editor-model", help=_EDITOR_MODEL_HELP),
+    verifier_model: Optional[str] = typer.Option(None, "--verifier-model"),
+    max_attempts: int = typer.Option(2, "--max-attempts", min=1),
+    downstream: bool = typer.Option(
+        False, "--downstream/--no-downstream", help="Kayıtlı görev seti varsa aşağı akış performansını da ölç (ekstra model çağrısı gerektirir)."
+    ),
+    agent_model: Optional[str] = typer.Option(
+        None, "--agent-model", help="Aşağı akış görevinde 'agent' olarak kullanılacak model. Boşsa editor-model kullanılır."
+    ),
+    as_json: bool = typer.Option(
+        False, "--json", help="Sonucu insan-okunur tablo yerine makine-okunur JSON olarak yazdır."
+    ),
+) -> None:
+    """Örnek dosyalar üzerinde token azalması ve bilgi korunumunu ölçer, hiçbir dosyaya yazmaz."""
+    base = directory or _SAMPLES_DIR
+    files = sorted(base.glob("*.md"))
+    if not files:
+        console.print(f"[red]Örnek dosya bulunamadı: {base}[/red]")
+        raise typer.Exit(1)
+
+    rows = _compute_benchmark_rows(files, editor_model, verifier_model, max_attempts, downstream, agent_model)
 
     if as_json:
         payload = []
@@ -179,6 +194,74 @@ def benchmark(
             )
         elif downstream:
             console.print("   [dim]aşağı akış görevi bu dosya için tanımlı değil.[/dim]")
+
+
+@app.command()
+def dashboard(
+    directory: Optional[Path] = typer.Option(
+        None, "--dir", help="Örnek dosyaların bulunduğu klasör (varsayılan: gömülü örnekler)."
+    ),
+    editor_model: str = typer.Option("ollama:llama3.1", "--editor-model", help=_EDITOR_MODEL_HELP),
+    verifier_model: Optional[str] = typer.Option(None, "--verifier-model"),
+    max_attempts: int = typer.Option(2, "--max-attempts", min=1),
+    agent_model: Optional[str] = typer.Option(
+        None, "--agent-model", help="Aşağı akış görevinde 'agent' olarak kullanılacak model. Boşsa editor-model kullanılır."
+    ),
+    out: Path = typer.Option(Path("dashboard.html"), "--out", help="HTML panosunun yazılacağı dosya."),
+) -> None:
+    """Token azalması, bilgi korunumu ve aşağı akış ölçütlerinin tümünü tek bir HTML panosunda birleştirir.
+
+    `zarif benchmark --downstream`'in yaptığı her şeyi çalıştırır (aşağı akış
+    dahil olduğu için ekstra model çağrıları gerektirir), sonra hem terminalde
+    özet bir tablo gösterir hem de paylaşılabilir bir `--out` HTML dosyası yazar.
+    """
+    base = directory or _SAMPLES_DIR
+    files = sorted(base.glob("*.md"))
+    if not files:
+        console.print(f"[red]Örnek dosya bulunamadı: {base}[/red]")
+        raise typer.Exit(1)
+
+    console.print("[bold]Zarif[/bold] — pano için tüm ölçütler hesaplanıyor...")
+    rows = _compute_benchmark_rows(files, editor_model, verifier_model, max_attempts, True, agent_model)
+
+    dashboard_rows = [
+        BenchmarkRow(
+            name=name,
+            tokens_before=report["before"],
+            tokens_after=report["after"],
+            reduction_pct=report["reduction_pct"],
+            sufficient=sufficient,
+            raw_downstream=task_scores[0] if task_scores else None,
+            edited_downstream=task_scores[1] if task_scores else None,
+        )
+        for name, report, sufficient, task_scores in rows
+    ]
+
+    table = Table(title="Zarif Benchmark Panosu")
+    table.add_column("Dosya")
+    table.add_column("Korunum")
+    table.add_column("Token (öncesi → sonrası)")
+    table.add_column("Azalma")
+    table.add_column("QA (ham → düzenlenmiş)")
+    table.add_column("Senaryo (ham → düzenlenmiş)")
+    for row in dashboard_rows:
+        status = "✅" if row.sufficient else ("⚠️" if row.sufficient is not None else "—")
+        raw_qa = format_score(row.raw_downstream.qa_score) if row.raw_downstream else "—"
+        edited_qa = format_score(row.edited_downstream.qa_score) if row.edited_downstream else "—"
+        raw_sc = format_score(row.raw_downstream.scenario_score) if row.raw_downstream else "—"
+        edited_sc = format_score(row.edited_downstream.scenario_score) if row.edited_downstream else "—"
+        table.add_row(
+            row.name,
+            status,
+            f"{row.tokens_before} → {row.tokens_after}",
+            f"{row.reduction_pct}%",
+            f"{raw_qa} → {edited_qa}",
+            f"{raw_sc} → {edited_sc}",
+        )
+    console.print(table)
+
+    out.write_text(render_html(dashboard_rows), encoding="utf-8")
+    console.print(f"[green]HTML pano yazıldı:[/green] {out}")
 
 
 @app.command()

@@ -135,6 +135,20 @@ Sonucu bir script/CI adımında işlemek isterseniz `--json` ile makine-okunur
 zarif benchmark --editor-model ollama:llama3.1 --downstream --json > sonuc.json
 ```
 
+## Pano (dashboard)
+
+Üç ölçütün tümünü (token azalması, bilgi korunumu, aşağı akış performansı)
+tek bir terminal tablosunda ve paylaşılabilir bir HTML dosyasında birleştirir:
+
+```powershell
+zarif dashboard --editor-model ollama:llama3.1 --out dashboard.html
+```
+
+`--downstream` her zaman açıktır (panonun amacı tüm ölçütleri göstermek),
+bu yüzden ekstra bir "agent" model çağrısı gerektirir — `--agent-model` ile
+farklı bir model seçilebilir. Üretilen `dashboard.html` tarayıcıda açılabilir,
+harici bir CDN/JS bağımlılığı yoktur.
+
 ## Testler
 
 ```powershell
@@ -153,6 +167,7 @@ src/zarif/
   mcp_server.py      MCP sunucusu: sampling tabanlı model, propose/apply araçları
   graph/              LangGraph düğümleri, prompt'lar, structured output şemaları
   benchmark/samples/  Örnek (bilinçli şişirilmiş) talimat dosyaları (5 dosya)
+  benchmark/dashboard.py  Tüm ölçütleri birleştiren HTML pano render'ı
 docs/                MCP kullanım kılavuzu, LinkedIn paylaşım serisi
 tests/                pytest testleri (model çağrısı gerektirmeyen kısımlar)
 ```

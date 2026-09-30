@@ -24,6 +24,7 @@ def test_help_lists_all_commands():
     assert "benchmark" in result.output
     assert "serve" in result.output
     assert "restore" in result.output
+    assert "dashboard" in result.output
 
 
 def test_serve_command_calls_run_server(monkeypatch):

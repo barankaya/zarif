@@ -234,17 +234,27 @@ birleştiren dashboard.
 sırayla uygulanacak):**
 
 ```
-1. [ ] Hiyerarşi/çoklu dosya desteği — bir dizin altındaki tüm talimat
+1. [x] Hiyerarşi/çoklu dosya desteği — bir dizin altındaki tüm talimat
        dosyalarını (CLAUDE.md, AGENTS.md, SKILL.md, .cursorrules, vb.)
        keşfedip aralarındaki tekrar eden paragrafları tespit etme.
-2. [ ] Deterministik "ölü kural" tespiti — talimat dosyasındaki bir kural
+       → `src/zarif/hierarchy.py` + `zarif hierarchy <dizin> [--json]`.
+2. [x] Deterministik "ölü kural" tespiti — talimat dosyasındaki bir kural
        zaten tsconfig.json/.eslintrc/.editorconfig/pyproject.toml gibi bir
        konfigürasyon dosyasıyla uygulanıyorsa işaretleme (LLM gerekmez).
-3. [ ] Secret/PII taraması — API anahtarı, private key, iç URL gibi
+       → `src/zarif/audit.py: find_dead_rules` (8 desen: indent-style,
+       final-newline, trailing-whitespace, semicolons, quote-style,
+       ts-strict, line-length, conventional-commits).
+3. [x] Secret/PII taraması — API anahtarı, private key, iç URL gibi
        yanlışlıkla commit edilmiş hassas bilgiyi talimat dosyasında bulma.
-4. [ ] Çelişki tespiti — aynı dosyada birbirini yalanlayan iki kuralı
+       → `src/zarif/audit.py: scan_for_secrets` (regex tabanlı, yer
+       tutucuları — `your-`, `changeme`, `<...>` vb. — eler, sonucu redakte
+       eder).
+4. [x] Çelişki tespiti — aynı dosyada birbirini yalanlayan iki kuralı
        (deterministik/heuristik, LLM'siz, "deneysel" olarak) işaretleme.
-5. [ ] CI/SARIF entegrasyonu — GitHub Code Scanning'e uygun çıktı formatı.
+       → `src/zarif/audit.py: find_contradictions` (zıt kutup + ortak
+       kelime sezgisi; yanlış pozitif verebileceği docstring'de açık).
+5. [x] CI/SARIF entegrasyonu — GitHub Code Scanning'e uygun çıktı formatı.
+       → `src/zarif/audit.py: render_sarif`, `zarif audit <dosya> --sarif <yol>`.
 6. [ ] Gotcha mining / zenginleştirme — ERTELENDİ. Kaynak koddan eksik
        operasyonel bilgiyi bulup dosyaya EKLEME, Prensip 1'i ("sadece
        çıkar/taşı/sadeleştir, yeni bilgi ekleme") doğrudan ihlal ediyor.
@@ -253,8 +263,11 @@ sırayla uygulanacak):**
 ```
 
 1-5 numaralı maddeler `zarif hierarchy <dizin>` ve `zarif audit <dosya>`
-komutları altında uygulanacak (bkz. README/docs güncellemeleri, ilerledikçe
-yukarıdaki kutucuklar işaretlenecek).
+komutları altında uygulandı (bkz. README güncellemesi). Her iki komut da
+saf Python/regex/stdlib config-parser kullanır — LLM çağrısı veya ağ
+erişimi gerektirmez, bu yüzden bu sandbox'ta gerçek çalışma zamanı
+testleriyle doğrulanabildiler (`tests/test_hierarchy.py`,
+`tests/test_audit.py`).
 
 ---
 

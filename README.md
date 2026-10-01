@@ -149,6 +149,40 @@ bu yüzden ekstra bir "agent" model çağrısı gerektirir — `--agent-model` i
 farklı bir model seçilebilir. Üretilen `dashboard.html` tarayıcıda açılabilir,
 harici bir CDN/JS bağımlılığı yoktur.
 
+## Hiyerarşi analizi
+
+Bir dizin altındaki tüm talimat dosyalarını (`CLAUDE.md`, `AGENTS.md`,
+`SKILL.md`, `.cursorrules`, `*copilot-instructions.md`, vb.) keşfeder, her
+birinin token sayısını/derinliğini raporlar ve dosyalar arası tekrar eden
+paragrafları bulur (daha sığ/genel dosyada tutulup daha derin/özel dosyadan
+çıkarılması önerilir). LLM veya ağ erişimi gerektirmez — saf metin
+karşılaştırmasıdır:
+
+```powershell
+zarif hierarchy .
+zarif hierarchy . --json
+```
+
+## Denetim (audit)
+
+Tek bir talimat dosyasını üç deterministik/heuristik kontrolden geçirir:
+
+- **Ölü kural tespiti**: kural zaten `.editorconfig`/`.prettierrc`/
+  `tsconfig.json`/`pyproject.toml` gibi bir konfigürasyon dosyası tarafından
+  uygulanıyorsa işaretlenir.
+- **Secret/PII taraması**: AWS anahtarı, private key, Slack token, jenerik
+  secret/password ataması gibi desenleri regex ile arar (yer tutucular —
+  `your-api-key`, `changeme` vb. — hariç tutulur, bulgular redakte edilir).
+- **Çelişki tespiti (deneysel)**: zıt kutuplu ("always"/"never" gibi) ve
+  ortak kelime içeren kural çiftlerini sezgisel olarak işaretler; yanlış
+  pozitif verebilir.
+
+```powershell
+zarif audit CLAUDE.md
+zarif audit CLAUDE.md --project-root . --json
+zarif audit CLAUDE.md --sarif zarif-audit.sarif.json   # CI/GitHub Code Scanning
+```
+
 ## Testler
 
 ```powershell
@@ -159,12 +193,14 @@ pytest
 
 ```
 src/zarif/
-  cli.py             Typer CLI: `edit`, `restore`, `benchmark`, `dashboard`, `serve` komutları
+  cli.py             Typer CLI: `edit`, `restore`, `hierarchy`, `audit`, `benchmark`, `dashboard`, `serve` komutları
   io_utils.py        Encoding/satır sonu koruma, yedekleme, kod/tablo koruma
   diffing.py         Unified diff üretimi ve renkli terminal çıktısı
   tokens.py          Token sayımı (tiktoken + heuristik fallback)
   models.py          Sağlayıcıdan bağımsız chat model factory (ollama/openai)
   mcp_server.py      MCP sunucusu: sampling tabanlı model, propose/apply/discard/restore araçları
+  hierarchy.py       Çoklu dosya keşfi + dosyalar arası tekrar eden paragraf tespiti (LLM'siz)
+  audit.py           Ölü kural / secret-PII / çelişki tespiti + SARIF çıktısı (LLM'siz)
   graph/              LangGraph düğümleri, prompt'lar, structured output şemaları
   benchmark/samples/  Örnek (bilinçli şişirilmiş) talimat dosyaları (5 dosya)
   benchmark/dashboard.py  Tüm ölçütleri birleştiren HTML pano render'ı

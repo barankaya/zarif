@@ -11,9 +11,11 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from .audit import render_sarif, run_audit
 from .benchmark.dashboard import BenchmarkRow, format_score, render_html
 from .benchmark.downstream import get_task_for, run_downstream
 from .graph import build_graph
+from .hierarchy import discover_instruction_files, find_cross_file_duplicates
 from .io_utils import find_latest_backup, read_source, restore_from_backup
 from .models import get_chat_model
 from .tokens import token_report
@@ -89,6 +91,140 @@ def restore(
 
     restore_from_backup(backup_path, str(file))
     console.print(f"[green]Geri yüklendi.[/green] Kaynak yedek: {backup_path}")
+
+
+@app.command()
+def hierarchy(
+    directory: Path = typer.Argument(
+        Path("."), exists=True, file_okay=False, dir_okay=True, help="Taranacak kök dizin."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
+) -> None:
+    """Bir dizin altındaki tüm talimat dosyalarını (CLAUDE.md, AGENTS.md, SKILL.md, ...) keşfeder.
+
+    Her dosyanın token sayısını ve derinliğini raporlar, ardından dosyalar arası
+    tekrar eden paragrafları bulur — daha sığ (genel) dosyada tutulup daha derin
+    (özel) dosyadan çıkarılması önerilir. LLM/ağ gerektirmez, saf metin karşılaştırmasıdır.
+    """
+    root = directory.resolve()
+    files = discover_instruction_files(root)
+    if not files:
+        console.print(f"[yellow]{root} altında talimat dosyası bulunamadı.[/yellow]")
+        raise typer.Exit(0)
+
+    duplicates = find_cross_file_duplicates(files)
+
+    if as_json:
+        payload = {
+            "files": [{"path": str(f.path), "depth": f.depth, "tokens": f.tokens} for f in files],
+            "duplicates": [
+                {
+                    "preview": d.paragraph_preview,
+                    "keep_in": str(d.shallow_file),
+                    "keep_in_depth": d.shallow_depth,
+                    "remove_from": str(d.deep_file),
+                    "remove_from_depth": d.deep_depth,
+                    "similarity": d.similarity,
+                }
+                for d in duplicates
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    table = Table(title=f"Talimat dosyası hiyerarşisi — {root}")
+    table.add_column("Dosya")
+    table.add_column("Derinlik")
+    table.add_column("Token")
+    for f in files:
+        table.add_row(str(f.path.relative_to(root)), str(f.depth), str(f.tokens))
+    console.print(table)
+
+    if not duplicates:
+        console.print("[green]Dosyalar arası tekrar eden paragraf bulunamadı.[/green]")
+        return
+
+    console.print(f"\n[bold yellow]{len(duplicates)} tekrar eden paragraf bulundu:[/bold yellow]")
+    for d in duplicates:
+        console.print(
+            f'  • "{d.paragraph_preview}" — [green]{d.shallow_file}[/green] (derinlik {d.shallow_depth}) '
+            f"içinde tutulması, [red]{d.deep_file}[/red] (derinlik {d.deep_depth}) içinden çıkarılması "
+            f"önerilir (benzerlik {d.similarity})"
+        )
+
+
+@app.command()
+def audit(
+    file: Path = typer.Argument(..., exists=True, readable=True, help="Denetlenecek markdown dosyası."),
+    project_root: Path = typer.Option(
+        Path("."), "--project-root", exists=True, file_okay=False, dir_okay=True,
+        help="Ölü kural tespiti için konfigürasyon dosyalarının aranacağı kök dizin.",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
+    sarif: Optional[Path] = typer.Option(
+        None, "--sarif", help="Sonucu bu yola SARIF 2.1.0 dosyası olarak yaz (CI entegrasyonu için)."
+    ),
+) -> None:
+    """Bir talimat dosyasını denetler: ölü kurallar, olası sır/PII sızıntısı ve çelişkiler.
+
+    - Ölü kural: kural zaten .editorconfig/.prettierrc/tsconfig.json/pyproject.toml gibi
+      bir konfigürasyon dosyası tarafından uygulanıyorsa işaretlenir.
+    - Sır/PII taraması: AWS anahtarı, private key, Slack token, jenerik secret/password
+      ataması gibi desenler regex ile aranır (yer tutucular hariç tutulur).
+    - Çelişki tespiti (deneysel): zıt kutuplu (always/never) ve ortak kelime içeren satır
+      çiftlerini sezgisel olarak işaretler; yanlış pozitif verebilir.
+
+    Tümü deterministiktir — LLM veya ağ erişimi gerektirmez.
+    """
+    text = read_source(str(file))
+    result = run_audit(text, project_root.resolve())
+
+    if sarif is not None:
+        sarif_doc = render_sarif(result, str(file))
+        sarif.write_text(json.dumps(sarif_doc, ensure_ascii=False, indent=2), encoding="utf-8")
+        console.print(f"[green]SARIF raporu yazıldı:[/green] {sarif}")
+
+    if as_json:
+        payload = {
+            "dead_rules": [
+                {"line": d.line_no, "rule": d.rule_snippet, "pattern": d.pattern_name, "reason": d.reason}
+                for d in result.dead_rules
+            ],
+            "secrets": [
+                {"line": s.line_no, "kind": s.kind, "redacted": s.redacted_snippet} for s in result.secrets
+            ],
+            "contradictions": [
+                {
+                    "line_a": c.line_a,
+                    "text_a": c.text_a,
+                    "line_b": c.line_b,
+                    "text_b": c.text_b,
+                    "shared_words": list(c.shared_words),
+                }
+                for c in result.contradictions
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if not (result.dead_rules or result.secrets or result.contradictions):
+        console.print("[green]Sorun bulunamadı.[/green]")
+        return
+
+    if result.dead_rules:
+        console.print(f"[bold yellow]Ölü kurallar ({len(result.dead_rules)}):[/bold yellow]")
+        for d in result.dead_rules:
+            console.print(f"  • satır {d.line_no}: \"{d.rule_snippet}\" — {d.reason}")
+
+    if result.secrets:
+        console.print(f"[bold red]Olası sır/PII ({len(result.secrets)}):[/bold red]")
+        for s in result.secrets:
+            console.print(f"  • satır {s.line_no}: {s.kind} — {s.redacted_snippet}")
+
+    if result.contradictions:
+        console.print(f"[bold magenta]Olası çelişkiler, deneysel ({len(result.contradictions)}):[/bold magenta]")
+        for c in result.contradictions:
+            console.print(f'  • satır {c.line_a} vs satır {c.line_b}: "{c.text_a}" ile "{c.text_b}"')
 
 
 def _compute_benchmark_rows(

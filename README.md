@@ -1,5 +1,7 @@
 # Zarif
 
+*Zarif is a CLI + MCP tool that shortens agent instruction files (CLAUDE.md, AGENTS.md, SKILL.md) while preserving meaning — verified by a second model, applied only on approval.*
+
 Agent'lara verilen markdown talimat dosyalarını (`SKILL.md`, `CLAUDE.md`,
 `AGENTS.md`, spec dosyaları vb.) okuyup, anlamı koruyarak daha kısa ve daha
 net hale getiren bir CLI aracı.
@@ -48,6 +50,9 @@ pip install -e ".[dev,local,mcp]"
 pytest
 ```
 
+Kurumsal ağda PyPI'ye doğrudan erişim yoksa pip'e proxy verin, örn.
+`pip install --proxy http://<proxy>:<port> -e ".[dev,local,mcp]"`.
+
 Bu adımlar internet erişimi gerektirir (PyPI'den paket indirir). Kurulum
 bitince ya doğrudan CLI'yi (`zarif edit ...`, aşağıya bakın) ya da bir MCP
 sunucusu olarak (`zarif serve`, ayrıntılı kılavuz:
@@ -87,15 +92,19 @@ Zarif, bağımsız bir MCP (Model Context Protocol) sunucusudur; hangi ajanla
 çalıştırılırsa, editör/doğrulayıcı LLM çağrılarını MCP'nin "sampling"
 yeteneğiyle o ajanın kendi modeline devreder — zarif'in ayrıca bir
 API anahtarına/yerel model kurulumuna ihtiyacı olmaz. `zarif_propose_edit`,
-`zarif_apply_edit`, `zarif_discard_edit` ve `zarif_restore_edit` araçlarını sunar.
+`zarif_continue_edit`, `zarif_apply_edit`, `zarif_discard_edit`,
+`zarif_restore_edit` ve benchmark araçları (`zarif_benchmark_start`,
+`zarif_benchmark_continue`, `zarif_benchmark_discard`) sunar.
 
 Host konfigürasyonu, tam araç referansı, örnek istek/yanıtlar ve sorun
 giderme için: **[docs/mcp-guide.md](docs/mcp-guide.md)**.
 
-**Doğrulanamayan nokta:** bu ortamda ağ erişimi olmadığı için `mcp` paketinin
-sampling API'sinin (`SamplingMessage`, `ctx.session.create_message(...)`)
-tam imzası kurulu bir paket karşısında test edilmedi; resmi
-[MCP Python SDK](https://modelcontextprotocol.io/) dokümanına göre yazıldı.
+`mcp` bağımlılığı bilinçli olarak v1'e sabitlenmiştir (`mcp>=1.2,<2`):
+kod, v1 API'sine (`FastMCP`, `SamplingMessage`,
+`ctx.session.create_message(...)`) göre yazılmıştır; mcp 2.x bu API'leri
+yeniden adlandırmıştır (`FastMCP` → `MCPServer`). Kurulum sonrası sunucunun
+çalıştığını hızlıca doğrulamak için `python scripts/mcp_smoke.py`
+(initialize handshake, `tools/list` ve bir araç çağrısı yapar).
 
 ## Yedeği geri yükleme
 
@@ -134,6 +143,41 @@ Sonucu bir script/CI adımında işlemek isterseniz `--json` ile makine-okunur
 ```powershell
 zarif benchmark --editor-model ollama:llama3.1 --downstream --json > sonuc.json
 ```
+
+MCP sunucusu modunda da aynı ölçüm, ayrı bir model kurulumu gerektirmeden
+host'un kendi modeliyle çalıştırılabilir (`zarif_benchmark_start` /
+`zarif_benchmark_continue`, bkz. [docs/mcp-guide.md](docs/mcp-guide.md) §5).
+
+### Örnek sonuç
+
+Aşağıdaki tablo, gömülü 5 örnek dosya üzerinde **MCP sampling** ile (host'un
+kendi modeli, ayrı Ollama/OpenAI kurulumu olmadan) çalıştırılmış gerçek bir
+ölçümün sonucudur:
+
+| Dosya | Önce | Sonra | Azalma | Bilgi korunumu |
+|---|---:|---:|---:|---|
+| `agent-instructions-1.md` | 707 | 295 | %58.3 | ✅ sufficient |
+| `code-review-agent.md` | 655 | 269 | %58.9 | ⚠️ insufficient |
+| `deployment-agent.md` | 666 | 342 | %48.6 | ⚠️ insufficient |
+| `onboarding-assistant.md` | 641 | 434 | %32.3 | ✅ sufficient |
+| `qa-test-agent.md` | 607 | 400 | %34.1 | ✅ sufficient |
+
+**Genel:** 3276 → 1740 token (toplam ~%46.9 azalma)
+
+Yorum:
+
+- 3 dosyada hem yüksek token azalması hem bilgi korunumu sağlanmış.
+- `code-review-agent.md` ve `deployment-agent.md`'de token azalması yüksek
+  (%58.9 / %48.6) ama doğrulama adımı bilgi kaybı tespit etmiş
+  (`sufficient: false`) — bu iki dosyada sıkıştırma, kritik bazı detayları
+  düşürmüş olabilir.
+- `onboarding-assistant.md` ve `qa-test-agent.md` daha muhafazakâr
+  sıkıştırılmış (%32–34) ve bilgi korunumu başarılı.
+
+> **Not:** Bu değerler tek bir model/host ile tek bir çalıştırmanın sonucudur;
+> farklı bir model (Ollama, OpenAI, başka bir MCP host modeli) kullanırsanız
+> token sayıları ve `sufficient` sonuçları farklılık gösterebilir. Benchmark
+> gömülü örnek dosyalar üzerinde çalışır, workspace dosyalarına yazmaz.
 
 ## Pano (dashboard)
 
@@ -232,5 +276,6 @@ benimsendi (bkz. spec.md §7, [docs/mcp-guide.md](docs/mcp-guide.md)).
   geliştirildi) çalıştırılmadı. Kendi ortamınızda çalıştırıp sonuçları bu
   bölüme eklemeniz faydalı olur.
 - Kütüphane API'si ve toplu/klasör işleme henüz yok (spec.md §6, v0.2 kapsamı).
-- `mcp` paketinin sampling API imzası kurulu bir paket karşısında test
-  edilmedi (bkz. [docs/mcp-guide.md](docs/mcp-guide.md) §10).
+- `mcp` paketinin sampling API'si kurulu paket (mcp 1.30) karşısında
+  doğrulandı (bkz. [docs/mcp-guide.md](docs/mcp-guide.md) §10 ve
+  `scripts/mcp_smoke.py`).

@@ -16,9 +16,11 @@ from .benchmark.dashboard import BenchmarkRow, format_score, render_html
 from .benchmark.downstream import get_task_for, run_downstream
 from .graph import build_graph
 from .hierarchy import discover_instruction_files, find_cross_file_duplicates
-from .io_utils import find_latest_backup, read_source, restore_from_backup
+from .io_utils import ensure_utf8_streams, find_latest_backup, read_source, restore_from_backup
 from .models import get_chat_model
 from .tokens import token_report
+
+ensure_utf8_streams()  # Windows'ta legacy codepage'lerde model çıktısındaki Unicode karakterler çökmesin.
 
 app = typer.Typer(add_completion=False, help="Zarif — talimat dosyalarını sadeleştiren CLI.")
 console = Console()
@@ -176,7 +178,7 @@ def audit(
 
     Tümü deterministiktir — LLM veya ağ erişimi gerektirmez.
     """
-    text = read_source(str(file))
+    text = read_source(str(file)).text
     result = run_audit(text, project_root.resolve())
 
     if sarif is not None:

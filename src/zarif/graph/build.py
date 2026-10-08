@@ -17,7 +17,7 @@ from .nodes import (
 from .state import ZarifState
 
 
-def build_graph(editor_model, verifier_model, checkpointer=None):
+def build_graph(editor_model, verifier_model, checkpointer=None, *, step_by_step: bool = False):
     graph = StateGraph(ZarifState)
 
     graph.add_node("parse", parse_node)
@@ -41,4 +41,14 @@ def build_graph(editor_model, verifier_model, checkpointer=None):
 
     # interrupt_before=["write"] gives the CLI a pause point to ask for human approval
     # before anything touches disk (Prensip 3).
-    return graph.compile(checkpointer=checkpointer or MemorySaver(), interrupt_before=["write"])
+    interrupt_before = ["write"]
+    if step_by_step:
+        # MCP host'larda tek bir tool çağrısı içinde birden fazla ardışık sampling
+        # round-trip'i host'un kendi tool-call zaman aşımını aşabiliyor (ör. IntelliJ,
+        # bkz. mcp_server.py docstring'i). Her model çağrısı öncesinde de durarak,
+        # host'un her seferinde ayrı (tek round-trip'lik) bir tool çağrısı yapmasına
+        # izin veriyoruz — CLI bu interrupt'ları kendi içinde sessizce döngüyle geçer
+        # (bkz. cli.py `edit`), bu yüzden CLI davranışı değişmez.
+        interrupt_before = ["extract_critical", "propose_edit", "verify_retention", "write"]
+
+    return graph.compile(checkpointer=checkpointer or MemorySaver(), interrupt_before=interrupt_before)

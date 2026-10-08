@@ -1,11 +1,37 @@
+# Python
 __pycache__/
 *.pyc
+*.pyo
 *.egg-info/
 build/
 dist/
 .venv/
 venv/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+htmlcov/
+
+# Backup files (zarif edit creates these)
 *.bak
 *.bak[0-9]*
+
+# Environment / secrets
 .env
+.env.*
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Local project notes (may contain personal/corporate data)
+.alli/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini

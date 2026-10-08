@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import sys
+
 from rich.console import Console
 
 from ..diffing import render_diff, unified_diff_text
@@ -10,7 +12,8 @@ from .prompts import EXTRACT_CRITICAL_PROMPT, PROPOSE_EDIT_PROMPT, VERIFY_RETENT
 from .schemas import CriticalItemsResult, RetentionReport
 from .state import ZarifState
 
-console = Console()
+# stderr'e yaz: MCP sunucusu stdio üzerinden JSON-RPC konuşur, stdout'a karışmamalı.
+console = Console(file=sys.stderr)
 
 
 def _format_items(items: list[dict]) -> str:

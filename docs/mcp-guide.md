@@ -107,6 +107,28 @@ açılır):
 Kaydettikten sonra Claude Desktop'ı yeniden başlatın; araç çubuğunda
 "zarif" sunucusunu ve araçlarını görmelisiniz.
 
+### IntelliJ (AI Assistant / MCP Client eklentisi)
+
+Konfigürasyon aynı `command`/`args` deseniyle çalışır (IDE ayarları → MCP
+sunucuları → `mcp.json` benzeri bir dosya).
+
+Gerçek testlerde IntelliJ'de iki farklı hata gözlemlendi: `Another MCP
+sampling request is already in progress` (-32603) ve `Request timed out`
+(-32001) — ikisi de aynı kök nedenden kaynaklanıyor: eski tasarımda tek bir
+`zarif_propose_edit` çağrısı tek seferde 3-5 ardışık sampling round-trip'i
+yapıyordu (extract_critical → propose_edit → verify_retention,
+`max_attempts` ile tekrar), host'un kendi tool-call zaman aşımı bunu
+karşılamayabiliyordu. **Önce MCP progress notification denendi, işe
+yaramadı** (IntelliJ ilk denemeyi bile zaman aşımına uğratıyordu) — bu
+yüzden zarif artık bu işi tamamen farklı çözüyor: `zarif_propose_edit`
+hiçbir sampling çağrısı yapmadan anında döner, ve yeni
+`zarif_continue_edit(session_id)` aracı her çağrıda **en fazla bir**
+sampling round-trip'i yapar (bkz. Bölüm 5). Ajan `status: "ready_to_apply"`
+olana kadar bu aracı tekrar tekrar çağırır — her tek tool çağrısı kısa
+sürdüğü için IntelliJ'in tool-call zaman aşımını aşma riski neredeyse
+ortadan kalkar — bunu yaparken host'un kendi modeli (sampling) kullanılmaya
+devam eder, `editor_model`'e geçmek gerekmez.
+
 ### Diğer MCP host'ları
 
 Genel desen aynıdır: host'a "`command` + `args` ile stdio üzerinden bir alt
@@ -119,7 +141,8 @@ desteklemiyorsa bkz. [Bölüm 7](#7-sampling-yerine-sabit-bir-model-kullanma).
 
 ### `zarif_propose_edit`
 
-Bir markdown dosyasını sadeleştirir, **hiçbir dosyaya yazmadan** diff önerir.
+Bir markdown dosyası için düzenleme oturumu **başlatır** — hiçbir sampling/LLM
+çağrısı yapmadan **anında** döner (bkz. aşağıdaki "neden adım adım?" notu).
 
 | Parametre | Tip | Varsayılan | Açıklama |
 |---|---|---|---|
@@ -130,8 +153,34 @@ Bir markdown dosyasını sadeleştirir, **hiçbir dosyaya yazmadan** diff öneri
 Dönüş:
 
 ```jsonc
+{ "session_id": "3f1c...-uuid", "status": "in_progress", "next_step": "extract_critical" }
+```
+
+`session_id`'yi hemen `zarif_continue_edit`'e verin.
+
+### `zarif_continue_edit`
+
+Bir oturumu **bir sonraki adıma** kadar ilerletir — en fazla **tek bir**
+sampling round-trip'i yapar (`extract_critical`, `propose_edit` veya
+`verify_retention` adımlarından biri). `status` hâlâ `"in_progress"` olduğu
+sürece bu aracı tekrar tekrar çağırın.
+
+| Parametre | Tip | Açıklama |
+|---|---|---|
+| `session_id` | `string` | `zarif_propose_edit`'in döndürdüğü id. |
+
+Dönüş (devam ederken):
+
+```jsonc
+{ "session_id": "3f1c...-uuid", "status": "in_progress", "next_step": "propose_edit" }
+```
+
+Dönüş (hazır olduğunda, `status: "ready_to_apply"`):
+
+```jsonc
 {
   "session_id": "3f1c...-uuid",
+  "status": "ready_to_apply",
   "diff": "--- a/CLAUDE.md\n+++ b/CLAUDE.md\n@@ ...",
   "sufficient": true,
   "warnings": [],
@@ -142,15 +191,22 @@ Dönüş:
 - `sufficient: false` ise doğrulayıcı bazı kritik maddelerin kaybolduğunu
   düşünüyor demektir; `warnings` içinde ayrıntı bulunur. Yine de `diff` ve
   `session_id` döner — dosyayı yazıp yazmamaya siz karar verirsiniz.
-- `session_id`, LangGraph'ın altında yatan `thread_id`'sidir; bir sonraki
-  adımda (`zarif_apply_edit`) bu id ile devam ettirilir. Sunucu süreci
+- `session_id`, LangGraph'ın altında yatan `thread_id`'sidir; sunucu süreci
   hayatta olduğu sürece bellekte tutulur — sunucu yeniden başlatılırsa
   bekleyen session'lar kaybolur, `zarif_propose_edit`'i tekrar çağırmanız
   gerekir.
 
+**Neden adım adım?** Bazı host'lar (ör. IntelliJ) tek bir tool çağrısı
+içindeki birden fazla ardışık sampling round-trip'ini kendi tool-call zaman
+aşımı içinde bekleyemiyor (`-32001 Request timed out`, bkz. Bölüm 9). Her
+`zarif_continue_edit` çağrısı en fazla bir round-trip yaptığı için, host'un
+kendi modeli (sampling) kullanılmaya devam ederken her tek tool çağrısı kısa
+sürer.
+
 ### `zarif_apply_edit`
 
-`zarif_propose_edit`'in önerdiği değişikliği onaylar ve dosyaya yazar.
+`zarif_continue_edit`'in `"ready_to_apply"` döndürdüğü değişikliği onaylar ve
+dosyaya yazar.
 
 | Parametre | Tip | Açıklama |
 |---|---|---|
@@ -162,8 +218,10 @@ Dönüş:
 { "written": true, "backup_path": "CLAUDE.md.bak" }
 ```
 
-Bilinmeyen/kullanılmış bir `session_id` verilirse hata döner
-(`Bilinmeyen session_id: ... (önce zarif_propose_edit çağırın)`).
+Bilinmeyen bir `session_id` verilirse hata döner
+(`Bilinmeyen session_id: ... (önce zarif_propose_edit çağırın)`); oturum henüz
+`"ready_to_apply"` durumuna gelmediyse de hata döner (`zarif_continue_edit`'i
+önce tamamlayın).
 
 ### `zarif_discard_edit`
 
@@ -203,15 +261,57 @@ Dönüş:
 
 Yedek bulunamazsa hata döner (`Yedek bulunamadı: <dosya>.bak`).
 
+### `zarif_benchmark_start` / `zarif_benchmark_continue` / `zarif_benchmark_discard`
+
+CLI'daki `zarif benchmark` komutunun (gömülü 5 örnek dosya üzerinde token
+azalması/bilgi korunumu ölçümü, bkz. README "Downstream benchmark") MCP
+karşılığı — **hiçbir dosyaya yazmaz**, host'un kendi modelini kullanır,
+ayrı bir Ollama/OpenAI kurulumu gerekmez.
+
+`zarif_benchmark_start` tıpkı `zarif_propose_edit` gibi anında döner (henüz
+sampling yapmaz):
+
+| Parametre | Tip | Varsayılan | Açıklama |
+|---|---|---|---|
+| `editor_model` | `string \| null` | `null` | Verilirse sampling yerine bu sağlayıcı kullanılır. |
+| `max_attempts` | `integer` | `2` | Her dosya için `verify_retention` başarısız olursa kaç kez yeniden denenir. |
+
+```jsonc
+{ "run_id": "3f1c...-uuid", "status": "in_progress", "file": "agent-instructions-1.md", "file_index": 1, "total_files": 5, "completed": [] }
+```
+
+`zarif_benchmark_continue(run_id)` her çağrıda **en fazla bir** sampling
+round-trip'i yapar; `status` `"in_progress"` olduğu sürece tekrar tekrar
+çağırın. Bir dosya bitince `completed` listesine eklenir, otomatik olarak
+sıradaki dosyaya geçilir. Tüm dosyalar bitince:
+
+```jsonc
+{
+  "run_id": "3f1c...-uuid",
+  "status": "done",
+  "results": [
+    { "name": "agent-instructions-1.md", "tokens": { "before": 1200, "after": 410, "reduction_pct": 65.8 }, "sufficient": true },
+    ...
+  ]
+}
+```
+
+`zarif_benchmark_discard(run_id)` yarım kalmış bir ölçümü bellekten temizler
+(`zarif_discard_edit` ile aynı mantık). **Not**: aşağı akış görev skorlaması
+(CLI'daki `--downstream` bayrağı) şu an bu MCP araçlarında yok — sadece token
+azalması ve bilgi korunumu (`sufficient`) ölçülür.
+
 ## 6. Uçtan uca örnek akış
 
 Host'unuzdaki sohbette (ör. "CLAUDE.md dosyasını sadeleştir" dediğinizde
 ajan şu adımları izler):
 
-1. Ajan `zarif_propose_edit(file_path="CLAUDE.md")` çağırır.
-2. Zarif, editör/doğrulayıcı adımları için sizin sohbet ettiğiniz modele
-   sampling istekleri gönderir (host bunu sizin adınıza, genelde sessizce
-   veya bir onay istemiyle yürütür).
+1. Ajan `zarif_propose_edit(file_path="CLAUDE.md")` çağırır (anında döner,
+   `status: "in_progress"`).
+2. Ajan `status` `"ready_to_apply"` olana kadar `zarif_continue_edit(session_id="...")`'i
+   tekrar tekrar çağırır; her çağrı sizin sohbet ettiğiniz modele tek bir
+   sampling isteği gönderir (host bunu sizin adınıza, genelde sessizce veya
+   bir onay istemiyle yürütür).
 3. Ajan size diff'i gösterir, "bu değişiklikleri uygulayayım mı?" diye sorar.
 4. Onaylarsanız ajan `zarif_apply_edit(session_id="...")` çağırır, dosya
    yedeklenip yazılır. Reddederseniz ajan `zarif_discard_edit(session_id="...")`
@@ -261,6 +361,8 @@ gerekir.
 | `zarif_apply_edit` "Bilinmeyen session_id" hatası veriyor | Sunucu bu çağrı öncesinde yeniden başlatılmış (session bellekte kayboldu) ya da aynı `session_id` daha önce zaten uygulanmış. `zarif_propose_edit`'i tekrar çağırın. |
 | Sampling çağrısı hiç yanıt vermiyor / host onay bekliyor | Bazı host'lar sampling isteklerini kullanıcı onayına bağlar; host'unuzun bildirim/istem alanını kontrol edin. |
 | `editor_model` ile hata (`langchain-ollama`/`langchain-openai` eksik) | İlgili opsiyonel bağımlılık grubunu kurun: `pip install -e ".[local]"` / `".[api]"`. |
+| `MCP error -32603: ... Another MCP sampling request is already in progress` (sık IntelliJ'de) | Zarif bu hatayı otomatik olarak sınırlı sayıda (5) üstel geri çekilmeyle yeniden dener (bkz. Bölüm 8). Ayrıca `zarif_propose_edit`/`zarif_continue_edit` artık her çağrıda en fazla bir sampling round-trip'i yaptığından (bkz. §4 IntelliJ notu), nested-sampling çakışma riski eskisinden çok daha düşüktür. Yine de görürseniz, host'un sampling/tool-timeout ayarlarını kontrol edin; son çare olarak `editor_model` ile tamamen atlanabilir (bkz. Bölüm 7), ama bu host'un modelini kullanma amacından vazgeçer. |
+| `MCP error -32001: Request timed out` (IntelliJ'de `zarif_propose_edit` çağrısında) | Eski tasarımda zarif tek çağrıda 3-5 ardışık sampling round-trip'i yapıyordu; büyük dosyalarda bu host'un tool-call zaman aşımını aşabiliyordu. MCP progress notification denendi ama IntelliJ'in timeout'unu uzatmadığı doğrulandı. Çözüm: zarif artık adım adım ilerliyor — `zarif_propose_edit` anında döner, `zarif_continue_edit(session_id)` her çağrıda en fazla bir round-trip yapar, `status: "ready_to_apply"` olana kadar tekrar çağrılır (bkz. Bölüm 5). Yine de zaman aşımı yaşarsanız (çok yavaş bir host modeli ile tek round-trip bile uzun sürüyorsa), host'unuzda tool-call/timeout ayarı var mı kontrol edin. |
 
 ## 10. Bilinen sınırlamalar
 

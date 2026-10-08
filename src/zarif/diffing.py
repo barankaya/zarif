@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import difflib
+import sys
 
 from rich.console import Console
 from rich.text import Text
 
-console = Console()
+# stderr'e yaz: MCP sunucusu stdio üzerinden JSON-RPC konuşur, stdout'a karışmamalı.
+console = Console(file=sys.stderr)
 
 
 def unified_diff_text(original: str, edited: str, filename: str) -> str:

@@ -25,7 +25,9 @@ dependencies = [
 [project.optional-dependencies]
 local = ["langchain-ollama>=0.2"]
 api = ["langchain-openai>=0.2"]
-mcp = ["mcp>=1.2"]
+# v1 API (FastMCP, SamplingMessage, ctx.session.create_message). mcp 2.x renamed
+# FastMCP -> MCPServer and changed the sampling API, which this code does not use.
+mcp = ["mcp>=1.2,<2"]
 dev = ["pytest>=8.0"]
 
 [project.scripts]

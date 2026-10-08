@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +15,20 @@ _BOM_UTF16_BE = b"\xfe\xff"
 _FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,}).*?\n.*?^ {0,3}\1[ \t]*$", re.DOTALL | re.MULTILINE)
 # Matches consecutive markdown table rows (lines starting and ending with '|').
 _TABLE_RE = re.compile(r"(?:^\|.*\|[ \t]*$\n?)+", re.MULTILINE)
+
+
+def ensure_utf8_streams(*, include_stdout: bool = True, include_stderr: bool = True) -> None:
+    """Windows'ta sistem codepage'i (ör. cp1254/cp857) modelin ürettiği Unicode
+    karakterlerde (ör. '→') `UnicodeEncodeError` ile çökebiliyor. MCP sunucusu
+    stdio üzerinden JSON-RPC konuştuğu için stdout'a DOKUNULMAMALI; sadece
+    `include_stdout=False` ile çağrılmalı (bkz. mcp_server.run_server)."""
+    for include, stream in ((include_stdout, sys.stdout), (include_stderr, sys.stderr)):
+        if not include:
+            continue
+        try:
+            stream.reconfigure(encoding="utf-8", errors="replace")
+        except (AttributeError, ValueError):
+            pass
 
 
 @dataclass

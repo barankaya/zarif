@@ -286,7 +286,7 @@ zarif hierarchy . --json
 
 ## Denetim (audit)
 
-Tek bir talimat dosyasını üç deterministik/heuristik kontrolden geçirir:
+Tek bir talimat dosyasını dört deterministik/heuristik kontrolden geçirir:
 
 - **Ölü kural tespiti**: kural zaten `.editorconfig`/`.prettierrc`/
   `tsconfig.json`/`pyproject.toml` gibi bir konfigürasyon dosyası tarafından
@@ -297,6 +297,12 @@ Tek bir talimat dosyasını üç deterministik/heuristik kontrolden geçirir:
 - **Çelişki tespiti (deneysel)**: zıt kutuplu ("always"/"never" gibi) ve
   ortak kelime içeren kural çiftlerini sezgisel olarak işaretler; yanlış
   pozitif verebilir.
+- **Bayat referans tespiti**: backtick içindeki göreceli yollar (`src/x.py`,
+  `docs/`), `npm|pnpm|yarn run <script>` ve `make <hedef>` başvuruları projede
+  gerçekten var mı diye kontrol edilir. Muhafazakârdır: glob, URL, yer tutucu,
+  kod bloğu içindeki yollar ve `dist/`/`build/` gibi üretilen dizinler atlanır;
+  script/hedef kontrolü yalnızca proje kökünde `package.json` veya
+  `include` içermeyen bir `Makefile` varsa yapılır.
 
 ```powershell
 zarif audit CLAUDE.md
@@ -324,7 +330,7 @@ src/zarif/
   models.py          Sağlayıcıdan bağımsız chat model factory (ollama/openai)
   mcp_server.py      MCP sunucusu: sampling tabanlı model, propose/apply/discard/restore araçları
   hierarchy.py       Çoklu dosya keşfi + dosyalar arası tekrar eden paragraf tespiti (LLM'siz)
-  audit.py           Ölü kural / secret-PII / çelişki tespiti + SARIF çıktısı (LLM'siz)
+  audit.py           Ölü kural / secret-PII / çelişki / bayat referans tespiti + SARIF çıktısı (LLM'siz)
   graph/              LangGraph düğümleri, prompt'lar, structured output şemaları
   benchmark/samples/  Örnek (bilinçli şişirilmiş) talimat dosyaları (5 dosya)
   benchmark/dashboard.py  Tüm ölçütleri birleştiren HTML pano render'ı

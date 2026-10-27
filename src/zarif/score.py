@@ -11,6 +11,7 @@ Skorlama (100'den başlar, aşağı düşer):
   Ölü kural (audit)           -5/bulgu (max -15)
   Secret/PII (audit)          -10/bulgu (max -20)
   Çelişki (audit, deneysel)   -3/bulgu (max -9)
+  Bayat referans (audit)      -3/bulgu (max -9)
   Eksik operasyonel bilgi     -2/bulgu (max -10)
   Tekrar eden paragraf        -5/bulgu (max -15)  [sadece dizin modu]
   ─────────────────────────────────────────────────────
@@ -101,8 +102,9 @@ def score_file(text: str, project_root: Path, file_path: str = "") -> ScoreRepor
         details=tok_details,
     ))
 
-    # 2. Audit (ölü kural, secret, çelişki)
-    audit = run_audit(text, project_root)
+    # 2. Audit (ölü kural, secret, çelişki, bayat referans)
+    file_dir = (project_root / file_path).parent if file_path else None
+    audit = run_audit(text, project_root, file_dir)
 
     dead_ded = min(len(audit.dead_rules) * 5, 15)
     categories.append(ScoreCategory(
@@ -135,6 +137,16 @@ def score_file(text: str, project_root: Path, file_path: str = "") -> ScoreRepor
             f'satır {c.line_a} vs {c.line_b}'
             for c in audit.contradictions[:5]
         ],
+    ))
+
+    stale_ded = min(len(audit.stale_references) * 3, 9)
+    categories.append(ScoreCategory(
+        name="stale_references",
+        label="Bayat referans",
+        findings=len(audit.stale_references),
+        points_deducted=stale_ded,
+        max_deduction=9,
+        details=[f"satır {r.line_no}: {r.reference[:60]}" for r in audit.stale_references[:5]],
     ))
 
     # 3. Suggest (eksik operasyonel bilgi)

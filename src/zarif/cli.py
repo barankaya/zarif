@@ -184,7 +184,7 @@ def audit(
     Tümü deterministiktir — LLM veya ağ erişimi gerektirmez.
     """
     text = read_source(str(file)).text
-    result = run_audit(text, project_root.resolve())
+    result = run_audit(text, project_root.resolve(), file.resolve().parent)
 
     if sarif is not None:
         sarif_doc = render_sarif(result, str(file))
@@ -210,11 +210,15 @@ def audit(
                 }
                 for c in result.contradictions
             ],
+            "stale_references": [
+                {"line": r.line_no, "reference": r.reference, "kind": r.kind, "reason": r.reason}
+                for r in result.stale_references
+            ],
         }
         print(json.dumps(payload, ensure_ascii=False, indent=2))
         return
 
-    if not (result.dead_rules or result.secrets or result.contradictions):
+    if not (result.dead_rules or result.secrets or result.contradictions or result.stale_references):
         console.print("[green]Sorun bulunamadı.[/green]")
         return
 
@@ -232,6 +236,11 @@ def audit(
         console.print(f"[bold magenta]Olası çelişkiler, deneysel ({len(result.contradictions)}):[/bold magenta]")
         for c in result.contradictions:
             console.print(f'  • satır {c.line_a} vs satır {c.line_b}: "{c.text_a}" ile "{c.text_b}"')
+
+    if result.stale_references:
+        console.print(f"[bold cyan]Bayat referanslar ({len(result.stale_references)}):[/bold cyan]")
+        for r in result.stale_references:
+            console.print(f"  • satır {r.line_no}: {r.reference} — {r.reason}", markup=False)
 
 
 def _compute_benchmark_rows(

@@ -316,7 +316,8 @@ ilgisi yoktur — saf Python/regex/stdlib çalışır.
 
 #### `zarif_audit(file_path, project_root=".")`
 
-Bir talimat dosyasını denetler: ölü kurallar, secret/PII, çelişkiler.
+Bir talimat dosyasını denetler: ölü kurallar, secret/PII, çelişkiler, bayat referanslar
+(projede olmayan yol / `npm run` script'i / `make` hedefi).
 CLI'daki `zarif audit` ile aynı mantık.
 
 ```json
@@ -324,7 +325,8 @@ CLI'daki `zarif audit` ile aynı mantık.
   "file": "CLAUDE.md",
   "dead_rules": [{"line": 5, "rule": "4 boşluk girinti", "pattern": "indent-style", "reason": ".editorconfig"}],
   "secrets": [{"line": 12, "kind": "generic_api_key", "redacted": "sk-Ab3C…"}],
-  "contradictions": []
+  "contradictions": [],
+  "stale_references": [{"line": 8, "reference": "src/legacy/helper.py", "kind": "path", "reason": "Bu yol projede bulunamadı"}]
 }
 ```
 

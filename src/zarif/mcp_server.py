@@ -466,7 +466,7 @@ def register_tools(server: Any) -> None:
         from .audit import run_audit
 
         text = read_source(file_path).text
-        result = run_audit(text, Path(project_root).resolve())
+        result = run_audit(text, Path(project_root).resolve(), Path(file_path).resolve().parent)
         return {
             "file": file_path,
             "dead_rules": [
@@ -484,6 +484,10 @@ def register_tools(server: Any) -> None:
                     "shared_words": list(c.shared_words),
                 }
                 for c in result.contradictions
+            ],
+            "stale_references": [
+                {"line": r.line_no, "reference": r.reference, "kind": r.kind, "reason": r.reason}
+                for r in result.stale_references
             ],
         }
 

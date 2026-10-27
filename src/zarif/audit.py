@@ -1,5 +1,5 @@
 """Single-file audit: deterministic dead-rule detection, secret/PII scanning,
-and best-effort contradiction hints.
+stale-reference detection, and best-effort contradiction hints.
 
 No LLM, no network — pure text and config-file analysis. Closes spec.md §9
 items 2-5 (dead rules, secrets, contradictions, SARIF/CI output).
@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -337,6 +337,157 @@ def find_contradictions(text: str) -> list[ContradictionFinding]:
 
 
 # ---------------------------------------------------------------------------
+# Stale references (paths / npm scripts / make targets that no longer exist)
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class StaleReferenceFinding:
+    line_no: int
+    reference: str
+    kind: str  # "path" | "npm-script" | "make-target"
+    reason: str
+
+
+# Build outputs / dependency dirs legitimately don't exist before a build or install.
+_GENERATED_PREFIXES = (
+    "dist", "build", "out", "node_modules", ".venv", "venv", "target",
+    "coverage", ".next", "__pycache__", ".pytest_cache", ".cache", "tmp", "temp",
+)
+_PATH_LAST_SEGMENT_EXT = re.compile(r"\.[A-Za-z0-9]{1,8}$")
+_NPM_RUN_RE = re.compile(r"\b(?:npm|pnpm|yarn|bun)\s+run\s+([A-Za-z0-9_:.\-]+)(?=\s|$)")
+_MAKE_RE = re.compile(r"(?:^|[\s;&|])make\s+([A-Za-z0-9_.\-]+)(?=\s|$)")
+_MAKE_TARGET_LINE_RE = re.compile(r"^([^\s#:=][^#:=]*?)\s*:(?!=)", re.MULTILINE)
+
+
+def _code_spans(text: str) -> list[tuple[int, str, bool]]:
+    """(line_no, content, in_fence) for inline `spans` and fenced-block lines."""
+    spans: list[tuple[int, str, bool]] = []
+    fence: Optional[str] = None
+    for i, line in enumerate(text.splitlines(), start=1):
+        stripped = line.strip()
+        marker = stripped[:3]
+        if marker in ("```", "~~~"):
+            if fence is None:
+                fence = marker
+            elif fence == marker:
+                fence = None
+            continue
+        if fence is not None:
+            spans.append((i, line, True))
+            continue
+        for m in re.finditer(r"`([^`\n]+)`", line):
+            spans.append((i, m.group(1), False))
+    return spans
+
+
+def _path_candidate(span: str) -> Optional[str]:
+    """Return a normalized relative path if the span clearly looks like one, else None."""
+    s = span.strip()
+    if not s or re.search(r"\s", s) or "/" not in s:
+        return None
+    if "://" in s or s.startswith(("/", "~", "@", "$", "..")) or "\\" in s:
+        return None
+    if any(ch in s for ch in "*?{}<>$%[]()|,;="):
+        return None
+    if s.startswith("./"):
+        s = s[2:]
+    is_dir = s.endswith("/")
+    if not s.strip("/"):
+        return None
+    if not is_dir and not _PATH_LAST_SEGMENT_EXT.search(s.rsplit("/", 1)[-1]):
+        return None
+    first = s.split("/", 1)[0]
+    if first in _GENERATED_PREFIXES:
+        return None
+    return s
+
+
+def _npm_scripts(project_root: Path) -> Optional[set[str]]:
+    path = project_root / "package.json"
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    scripts = data.get("scripts") if isinstance(data, dict) else None
+    return set(scripts) if isinstance(scripts, dict) else set()
+
+
+def _make_targets(project_root: Path) -> Optional[set[str]]:
+    for name in ("Makefile", "makefile", "GNUmakefile"):
+        path = project_root / name
+        if not path.exists():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return None
+        if re.search(r"^-?include\s", text, re.MULTILINE):
+            return None  # targets may live in included files — can't judge
+        targets: set[str] = set()
+        for m in _MAKE_TARGET_LINE_RE.finditer(text):
+            targets.update(t for t in m.group(1).split() if "%" not in t)
+        return targets
+    return None
+
+
+def find_stale_references(
+    text: str, project_root: Path, file_dir: Optional[Path] = None
+) -> list[StaleReferenceFinding]:
+    """Flag references to files/dirs, `npm run` scripts and `make` targets that don't exist.
+
+    Conservative by design: only backticked relative paths containing a '/' and an
+    extension (or trailing '/'), skipping globs, placeholders and build output dirs.
+    Script/target checks run only when package.json / a self-contained Makefile exists
+    at project_root. A path counts as present if it exists under project_root or file_dir.
+    """
+    findings: list[StaleReferenceFinding] = []
+    bases = [project_root] + ([file_dir] if file_dir is not None else [])
+    scripts = _npm_scripts(project_root)
+    targets = _make_targets(project_root)
+
+    for line_no, content, in_fence in _code_spans(text):
+        if not in_fence:
+            candidate = _path_candidate(content)
+            if candidate is not None and not any((b / candidate).exists() for b in bases):
+                findings.append(
+                    StaleReferenceFinding(
+                        line_no=line_no,
+                        reference=candidate,
+                        kind="path",
+                        reason="Bu yol projede bulunamadı",
+                    )
+                )
+        if scripts is not None:
+            for m in _NPM_RUN_RE.finditer(content):
+                name = m.group(1)
+                if name not in scripts:
+                    findings.append(
+                        StaleReferenceFinding(
+                            line_no=line_no,
+                            reference=m.group(0),
+                            kind="npm-script",
+                            reason=f"package.json scripts içinde '{name}' yok",
+                        )
+                    )
+        if targets is not None:
+            for m in _MAKE_RE.finditer(content):
+                name = m.group(1)
+                if name not in targets:
+                    findings.append(
+                        StaleReferenceFinding(
+                            line_no=line_no,
+                            reference=f"make {name}",
+                            kind="make-target",
+                            reason=f"Makefile içinde '{name}' hedefi yok",
+                        )
+                    )
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Unified audit + SARIF rendering
 # ---------------------------------------------------------------------------
 
@@ -346,13 +497,15 @@ class AuditResult:
     dead_rules: list[DeadRuleFinding]
     secrets: list[SecretFinding]
     contradictions: list[ContradictionFinding]
+    stale_references: list[StaleReferenceFinding] = field(default_factory=list)
 
 
-def run_audit(text: str, project_root: Path) -> AuditResult:
+def run_audit(text: str, project_root: Path, file_dir: Optional[Path] = None) -> AuditResult:
     return AuditResult(
         dead_rules=find_dead_rules(text, project_root),
         secrets=scan_for_secrets(text),
         contradictions=find_contradictions(text),
+        stale_references=find_stale_references(text, project_root, file_dir),
     )
 
 
@@ -395,6 +548,10 @@ def render_sarif(result: AuditResult, file_path: str) -> dict:
     for c in result.contradictions:
         ensure_rule("zarif/contradiction", "Olası çelişkili kural (deneysel)")
         add_result("zarif/contradiction", "warning", f'"{c.text_a}" ile "{c.text_b}" çelişebilir', c.line_a)
+
+    for r in result.stale_references:
+        ensure_rule("zarif/stale-reference", "Talimat, projede artık bulunmayan bir şeye referans veriyor")
+        add_result("zarif/stale-reference", "warning", f"{r.reference} — {r.reason}", r.line_no)
 
     return {
         "$schema": "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json",

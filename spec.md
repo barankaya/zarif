@@ -163,10 +163,12 @@ Bölümler birbirinden bağımsızsa paralel işlenebilir (paralel ayrıştırma
 
 ### Bilinçli Olarak Dışarıda
 ```
-- Kütüphane API'si               → v0.2
-- Toplu / klasör işleme          → v0.2
 - Markdown dışı formatlar        → sonra
 ```
+
+**Not (2026-10-27):** Kütüphane API'si (`src/zarif/api.py`: `edit_file()`,
+`edit_text()`, `EditResult`) ve toplu/klasör işleme (`zarif batch <dizin>`)
+v0.2 kapsamından öne çekilip v0.1'e eklendi.
 
 **Not (2026-09-30):** MCP server modu orijinal planda v0.3 içindi; "zarif'i
 bağımsız bir MCP sunucusuna çevirip hangi ajanla çalıştırılırsa onun

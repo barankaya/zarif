@@ -403,6 +403,123 @@ def dashboard(
 
 
 @app.command()
+def batch(
+    directory: Path = typer.Argument(
+        Path("."), exists=True, file_okay=False, dir_okay=True,
+        help="Taranacak kök dizin (varsayılan: mevcut dizin).",
+    ),
+    editor_model: str = typer.Option("ollama:llama3.1", "--editor-model", help=_EDITOR_MODEL_HELP),
+    verifier_model: Optional[str] = typer.Option(
+        None, "--verifier-model", help="Boş bırakılırsa editor-model ile aynısı kullanılır."
+    ),
+    max_attempts: int = typer.Option(2, "--max-attempts", min=1),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Onayı atla, tüm dosyalara doğrudan yaz."),
+    as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
+) -> None:
+    """Bir dizin altındaki tüm talimat dosyalarını toplu sadeleştirir.
+
+    `zarif hierarchy` ile aynı keşif mantığını kullanır (CLAUDE.md, AGENTS.md,
+    SKILL.md, .cursorrules, *copilot-instructions.md). Her dosya için pipeline
+    çalıştırılır, özet tablo gösterilir; onay sonrası tüm dosyalara yedek
+    alarak yazılır.
+    """
+    from .api import edit_file
+
+    root = directory.resolve()
+    files = discover_instruction_files(root)
+    if not files:
+        console.print(f"[yellow]{root} altında talimat dosyası bulunamadı.[/yellow]")
+        raise typer.Exit(0)
+
+    console.print(f"[bold]Zarif batch[/bold] — {len(files)} dosya işleniyor...\n")
+
+    results = []
+    for f in files:
+        rel = f.path.relative_to(root)
+        console.print(f"  • {rel} ... ", end="")
+        try:
+            result = edit_file(str(f.path), editor_model=editor_model, verifier_model=verifier_model, max_attempts=max_attempts)
+            has_change = bool(result.diff_text.strip())
+            status = "✅" if (has_change and result.sufficient) else ("⚠️" if has_change else "—")
+            console.print(f"{status} {result.token_report['before']} → {result.token_report['after']} ({result.token_report['reduction_pct']}%)")
+            results.append((f.path, result))
+        except Exception as e:
+            console.print(f"[red]hata: {e}[/red]")
+            results.append((f.path, None))
+
+    # Özet tablo
+    table = Table(title="Zarif Batch Özeti")
+    table.add_column("Dosya")
+    table.add_column("Token (öncesi → sonrası)")
+    table.add_column("Azalma")
+    table.add_column("Korunum")
+    table.add_column("Değişiklik")
+    for path, result in results:
+        rel = str(path.relative_to(root))
+        if result is None:
+            table.add_row(rel, "—", "—", "—", "[red]hata[/red]")
+        elif not result.diff_text.strip():
+            table.add_row(rel, f"{result.token_report['before']} → {result.token_report['after']}", "0%", "—", "[dim]yok[/dim]")
+        else:
+            status = "✅" if result.sufficient else "⚠️"
+            table.add_row(
+                rel,
+                f"{result.token_report['before']} → {result.token_report['after']}",
+                f"{result.token_report['reduction_pct']}%",
+                status,
+                "var",
+            )
+    console.print(table)
+
+    # JSON çıktı
+    if as_json:
+        payload = []
+        for path, result in results:
+            entry: dict = {"file": str(path.relative_to(root))}
+            if result is not None:
+                entry["tokens"] = result.token_report
+                entry["sufficient"] = result.sufficient
+                entry["has_changes"] = bool(result.diff_text.strip())
+            else:
+                entry["error"] = True
+            payload.append(entry)
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    # Uygulanacak dosyalar
+    to_apply = [(p, r) for p, r in results if r is not None and r.diff_text.strip()]
+    if not to_apply:
+        console.print("[green]Uygulanacak değişiklik yok.[/green]")
+        for _, r in results:
+            if r is not None:
+                r.discard()
+        return
+
+    console.print(f"\n[bold]{len(to_apply)} dosyaya yazılacak.[/bold]")
+    approved = yes or typer.confirm("Devam edeyim mi?", default=False)
+    if not approved:
+        console.print("[yellow]İptal edildi, hiçbir dosya değiştirilmedi.[/yellow]")
+        for _, r in results:
+            if r is not None:
+                r.discard()
+        return
+
+    for path, result in to_apply:
+        try:
+            backup = result.apply()
+            console.print(f"  [green]✓[/green] {path.relative_to(root)} (yedek: {Path(backup).name})")
+        except Exception as e:
+            rel_err = path.relative_to(root)
+            console.print(f"  [red]✗ {rel_err}: {e}[/red]")
+
+    for _, r in results:
+        if r is not None and not r._applied:
+            r.discard()
+
+    console.print(f"\n[green]Tamamlandı: {len(to_apply)} dosya güncellendi.[/green]")
+
+
+@app.command()
 def serve() -> None:
     """Zarif'i bir MCP sunucusu olarak çalıştırır (stdio).
 

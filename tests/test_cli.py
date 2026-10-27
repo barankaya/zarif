@@ -25,6 +25,7 @@ def test_help_lists_all_commands():
     assert "serve" in result.output
     assert "restore" in result.output
     assert "dashboard" in result.output
+    assert "batch" in result.output
 
 
 def test_serve_command_calls_run_server(monkeypatch):
@@ -56,3 +57,18 @@ def test_restore_command_restores_latest_backup(tmp_path):
 
     assert result.exit_code == 0
     assert target.read_text(encoding="utf-8") == "original"
+
+
+def test_batch_no_instruction_files_exits_cleanly(tmp_path):
+    """Boş dizinde batch çalıştırıldığında hata vermeden çıkmalı."""
+    result = runner.invoke(app, ["batch", str(tmp_path)])
+    assert result.exit_code == 0
+    assert "bulunamadı" in result.output
+
+
+def test_batch_help_shows_options():
+    result = runner.invoke(app, ["batch", "--help"])
+    assert result.exit_code == 0
+    assert "--editor-model" in result.output
+    assert "--yes" in result.output
+    assert "--json" in result.output

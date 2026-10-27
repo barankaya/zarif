@@ -193,6 +193,47 @@ bu yüzden ekstra bir "agent" model çağrısı gerektirir — `--agent-model` i
 farklı bir model seçilebilir. Üretilen `dashboard.html` tarayıcıda açılabilir,
 harici bir CDN/JS bağımlılığı yoktur.
 
+## Kütüphane API'si
+
+Zarif'i CLI veya MCP olmadan, doğrudan Python kodundan da kullanabilirsiniz:
+
+```python
+from zarif import edit_file, edit_text
+
+# Dosya tabanlı (diske yazmaz, onay sizin)
+result = edit_file("CLAUDE.md", editor_model="ollama:llama3.1")
+if result.diff_text.strip():
+    print(result.diff_text)
+    if result.sufficient:
+        backup = result.apply()  # yedek alır, yazar
+    else:
+        print("Bilgi kaybı var, yazılmadı.")
+result.discard()
+
+# Bellek içi metin (dosya I/O yok)
+result = edit_text("# Talimat\n\nUzun metin...", editor_model="ollama:llama3.1")
+result.apply_to("cikti.md")  # sonucu bir dosyaya yaz
+```
+
+`EditResult` nesnesi `diff_text`, `token_report`, `sufficient`, `warnings`,
+`missing_items` alanlarını taşır. `apply()` dosyaya yazar (yedek alır),
+`apply_to(path)` farklı bir dosyaya yazar, `discard()` kaynakları serbest
+bırakır.
+
+## Toplu işleme (batch)
+
+Bir dizin altındaki tüm talimat dosyalarını (`CLAUDE.md`, `AGENTS.md`,
+`SKILL.md`, `.cursorrules`, vb.) tek komutla sadeleştirir:
+
+```powershell
+zarif batch .
+zarif batch . --editor-model ollama:llama3.1 --yes
+zarif batch . --json
+```
+
+Her dosya için pipeline çalışır, özet tablo gösterilir; onay sonrası tüm
+dosyalara yedek alarak yazılır. `--json` ile makine-okunur çıktı alınır.
+
 ## Hiyerarşi analizi
 
 Bir dizin altındaki tüm talimat dosyalarını (`CLAUDE.md`, `AGENTS.md`,
@@ -237,7 +278,8 @@ pytest
 
 ```
 src/zarif/
-  cli.py             Typer CLI: `edit`, `restore`, `hierarchy`, `audit`, `benchmark`, `dashboard`, `serve` komutları
+  api.py             Kütüphane API'si: `edit_file()`, `edit_text()`, `EditResult`
+  cli.py             Typer CLI: `edit`, `batch`, `restore`, `hierarchy`, `audit`, `benchmark`, `dashboard`, `serve` komutları
   io_utils.py        Encoding/satır sonu koruma, yedekleme, kod/tablo koruma
   diffing.py         Unified diff üretimi ve renkli terminal çıktısı
   tokens.py          Token sayımı (tiktoken + heuristik fallback)
@@ -275,7 +317,6 @@ benimsendi (bkz. spec.md §7, [docs/mcp-guide.md](docs/mcp-guide.md)).
   depoda hiç gerçek bir modelle (ağ/model erişimi olmayan bir ortamda
   geliştirildi) çalıştırılmadı. Kendi ortamınızda çalıştırıp sonuçları bu
   bölüme eklemeniz faydalı olur.
-- Kütüphane API'si ve toplu/klasör işleme henüz yok (spec.md §6, v0.2 kapsamı).
 - `mcp` paketinin sampling API'si kurulu paket (mcp 1.30) karşısında
   doğrulandı (bkz. [docs/mcp-guide.md](docs/mcp-guide.md) §10 ve
   `scripts/mcp_smoke.py`).

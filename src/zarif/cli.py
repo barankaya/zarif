@@ -403,6 +403,59 @@ def dashboard(
 
 
 @app.command()
+def suggest(
+    file: Path = typer.Argument(..., exists=True, readable=True, help="Öneri üretilecek talimat dosyası."),
+    project_root: Path = typer.Option(
+        Path("."), "--project-root", exists=True, file_okay=False, dir_okay=True,
+        help="Kaynak kodun aranacağı kök dizin (varsayılan: mevcut dizin).",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
+) -> None:
+    """Talimat dosyasında eksik operasyonel bilgileri tespit eder (öneri modu).
+
+    Kaynak koddan (Makefile, package.json, docker-compose.yml, .env.example,
+    Dockerfile, pyproject.toml vb.) talimat dosyasında geçmeyen ortam
+    değişkenlerini, build komutlarını, servisleri, portları ve konfigürasyon
+    dosyalarını deterministik olarak bulur.
+
+    **Dosyaya asla yazmaz** — Prensip 1'e uygun "öneri modu". Uygun gördüğünüz
+    önerileri elle kopyalayıp talimat dosyanıza ekleyin. LLM/ağ gerektirmez.
+    """
+    from .suggest import render_suggestions, run_suggestions
+
+    text = read_source(str(file)).text
+    report = run_suggestions(text, project_root.resolve())
+    report.instruction_file = str(file)
+
+    if as_json:
+        payload = {
+            "file": str(file),
+            "suggestions": [
+                {
+                    "category": s.category,
+                    "title": s.title,
+                    "detail": s.detail,
+                    "source_file": s.source_file,
+                    "suggested_text": s.suggested_text,
+                }
+                for s in report.suggestions
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        return
+
+    if not report.has_suggestions:
+        console.print("[green]Eksik operasyonel bilgi bulunamadı — talimat dosyası kapsamlı görünüyor.[/green]")
+        return
+
+    console.print(f"[bold]Zarif suggest[/bold] — {file}\n")
+    # Markdown çıktısını rich ile render et.
+    from rich.markdown import Markdown
+
+    console.print(Markdown(render_suggestions(report)))
+
+
+@app.command()
 def batch(
     directory: Path = typer.Argument(
         Path("."), exists=True, file_okay=False, dir_okay=True,

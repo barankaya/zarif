@@ -26,6 +26,7 @@ def test_help_lists_all_commands():
     assert "restore" in result.output
     assert "dashboard" in result.output
     assert "batch" in result.output
+    assert "suggest" in result.output
 
 
 def test_serve_command_calls_run_server(monkeypatch):

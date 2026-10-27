@@ -234,6 +234,21 @@ zarif batch . --json
 Her dosya için pipeline çalışır, özet tablo gösterilir; onay sonrası tüm
 dosyalara yedek alarak yazılır. `--json` ile makine-okunur çıktı alınır.
 
+## Zenginleştirme önerisi (suggest)
+
+Talimat dosyasında eksik operasyonel bilgileri (ortam değişkenleri, build
+komutları, servisler, portlar, konfigürasyon dosyaları) kaynak koddan
+deterministik olarak tespit eder. **Dosyaya asla yazmaz** — Prensip 1'e
+uygun "öneri modu":
+
+```powershell
+zarif suggest CLAUDE.md --project-root .
+zarif suggest CLAUDE.md --project-root . --json
+```
+
+LLM veya ağ erişimi gerektirmez. Uygun gördüğünüz önerileri elle
+kopyalayıp talimat dosyanıza ekleyin.
+
 ## Hiyerarşi analizi
 
 Bir dizin altındaki tüm talimat dosyalarını (`CLAUDE.md`, `AGENTS.md`,
@@ -279,7 +294,8 @@ pytest
 ```
 src/zarif/
   api.py             Kütüphane API'si: `edit_file()`, `edit_text()`, `EditResult`
-  cli.py             Typer CLI: `edit`, `batch`, `restore`, `hierarchy`, `audit`, `benchmark`, `dashboard`, `serve` komutları
+  cli.py             Typer CLI: `edit`, `batch`, `suggest`, `restore`, `hierarchy`, `audit`, `benchmark`, `dashboard`, `serve`
+  suggest.py         Gotcha mining / zenginleştirme önerisi (LLM'siz, dosyaya yazmaz)
   io_utils.py        Encoding/satır sonu koruma, yedekleme, kod/tablo koruma
   diffing.py         Unified diff üretimi ve renkli terminal çıktısı
   tokens.py          Token sayımı (tiktoken + heuristik fallback)

@@ -257,11 +257,13 @@ sırayla uygulanacak):**
        kelime sezgisi; yanlış pozitif verebileceği docstring'de açık).
 5. [x] CI/SARIF entegrasyonu — GitHub Code Scanning'e uygun çıktı formatı.
        → `src/zarif/audit.py: render_sarif`, `zarif audit <dosya> --sarif <yol>`.
-6. [ ] Gotcha mining / zenginleştirme — ERTELENDİ. Kaynak koddan eksik
-       operasyonel bilgiyi bulup dosyaya EKLEME, Prensip 1'i ("sadece
-       çıkar/taşı/sadeleştir, yeni bilgi ekleme") doğrudan ihlal ediyor.
-       Ürün kararı gerektiriyor — belki ayrı, açıkça "öneri modu" olarak
-       (otomatik yazılmaz, insan onayına düşer) ileride değerlendirilebilir.
+6. [x] Gotcha mining / zenginleştirme — "öneri modu" olarak uygulandı.
+       Kaynak koddan eksik operasyonel bilgiyi bulup dosyaya EKLEME, Prensip 1'i
+       ("sadece çıkar/taşı/sadeleştir, yeni bilgi ekleme") ihlal ettiği için
+       **dosyaya asla yazılmaz**; sadece öneri üretir, kullanıcı elle kopyalar.
+       → `src/zarif/suggest.py` + `zarif suggest <dosya> --project-root . [--json]`.
+       5 kategori: env-var, build-command, service, port, config-file.
+       LLM/ağ gerektirmez, saf regex/stdlib.
 ```
 
 1-5 numaralı maddeler `zarif hierarchy <dizin>` ve `zarif audit <dosya>`

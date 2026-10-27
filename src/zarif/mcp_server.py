@@ -452,6 +452,127 @@ def register_tools(server: Any) -> None:
         session = _BENCHMARK_SESSIONS.pop(run_id, None)
         return {"discarded": session is not None}
 
+    # ------------------------------------------------------------------
+    # Deterministik araçlar — LLM/sampling gerektirmez, anında döner.
+    # ------------------------------------------------------------------
+
+    @server.tool()
+    async def zarif_audit(file_path: str, project_root: str = ".") -> dict:
+        """Bir talimat dosyasını denetler: ölü kurallar, secret/PII, çelişkiler.
+
+        LLM/ağ gerektirmez, anında döner. CLI'daki `zarif audit` ile aynı mantık.
+        """
+        from .audit import run_audit
+
+        text = read_source(file_path).text
+        result = run_audit(text, Path(project_root).resolve())
+        return {
+            "file": file_path,
+            "dead_rules": [
+                {"line": d.line_no, "rule": d.rule_snippet, "pattern": d.pattern_name, "reason": d.reason}
+                for d in result.dead_rules
+            ],
+            "secrets": [
+                {"line": s.line_no, "kind": s.kind, "redacted": s.redacted_snippet}
+                for s in result.secrets
+            ],
+            "contradictions": [
+                {
+                    "line_a": c.line_a, "text_a": c.text_a,
+                    "line_b": c.line_b, "text_b": c.text_b,
+                    "shared_words": list(c.shared_words),
+                }
+                for c in result.contradictions
+            ],
+        }
+
+    @server.tool()
+    async def zarif_suggest(file_path: str, project_root: str = ".") -> dict:
+        """Talimat dosyasında eksik operasyonel bilgileri tespit eder (öneri modu).
+
+        LLM/ağ gerektirmez, anında döner. Dosyaya ASLA yazmaz — Prensip 1 uyumlu.
+        CLI'daki `zarif suggest` ile aynı mantık.
+        """
+        from .suggest import run_suggestions
+
+        text = read_source(file_path).text
+        report = run_suggestions(text, Path(project_root).resolve())
+        return {
+            "file": file_path,
+            "suggestions": [
+                {
+                    "category": s.category,
+                    "title": s.title,
+                    "detail": s.detail,
+                    "source_file": s.source_file,
+                    "suggested_text": s.suggested_text,
+                }
+                for s in report.suggestions
+            ],
+        }
+
+    @server.tool()
+    async def zarif_hierarchy(directory: str = ".") -> dict:
+        """Bir dizin altındaki tüm talimat dosyalarını keşfeder, tekrarları bulur.
+
+        LLM/ağ gerektirmez, anında döner. CLI'daki `zarif hierarchy` ile aynı mantık.
+        """
+        from .hierarchy import discover_instruction_files, find_cross_file_duplicates
+
+        root = Path(directory).resolve()
+        files = discover_instruction_files(root)
+        duplicates = find_cross_file_duplicates(files)
+        return {
+            "directory": str(root),
+            "files": [
+                {"path": str(f.path.relative_to(root)), "depth": f.depth, "tokens": f.tokens}
+                for f in files
+            ],
+            "duplicates": [
+                {
+                    "preview": d.paragraph_preview,
+                    "keep_in": str(d.shallow_file),
+                    "remove_from": str(d.deep_file),
+                    "similarity": d.similarity,
+                }
+                for d in duplicates
+            ],
+        }
+
+    @server.tool()
+    async def zarif_score(target: str = ".", project_root: str = "") -> dict:
+        """Bir talimat dosyası veya dizin için 0-100 sağlık skoru hesaplar.
+
+        LLM/ağ gerektirmez, anında döner. CLI'daki `zarif score` ile aynı mantık.
+        """
+        from .score import score_directory, score_file
+
+        p = Path(target)
+        if p.is_dir():
+            report = score_directory(p)
+        else:
+            text = read_source(str(p)).text
+            root = Path(project_root).resolve() if project_root else p.parent.resolve()
+            report = score_file(text, root, str(p))
+        return {
+            "target": report.target,
+            "score": report.score,
+            "grade": report.grade,
+            "token_count": report.token_count,
+            "is_directory": report.is_directory,
+            "categories": [
+                {
+                    "name": c.name,
+                    "label": c.label,
+                    "findings": c.findings,
+                    "points_deducted": c.points_deducted,
+                    "max_deduction": c.max_deduction,
+                    "details": c.details,
+                }
+                for c in report.categories
+            ],
+        }
+
 
 def create_server() -> Any:
     try:

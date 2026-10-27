@@ -301,6 +301,70 @@ sıradaki dosyaya geçilir. Tüm dosyalar bitince:
 (CLI'daki `--downstream` bayrağı) şu an bu MCP araçlarında yok — sadece token
 azalması ve bilgi korunumu (`sufficient`) ölçülür.
 
+### Deterministik araçlar (LLM/sampling gerektirmez)
+
+Bu araçlar hiçbir model çağrısı yapmaz, anında döner. Host'un modeliyle
+ilgisi yoktur — saf Python/regex/stdlib çalışır.
+
+#### `zarif_audit(file_path, project_root=".")`
+
+Bir talimat dosyasını denetler: ölü kurallar, secret/PII, çelişkiler.
+CLI'daki `zarif audit` ile aynı mantık.
+
+```json
+{
+  "file": "CLAUDE.md",
+  "dead_rules": [{"line": 5, "rule": "4 boşluk girinti", "pattern": "indent-style", "reason": ".editorconfig"}],
+  "secrets": [{"line": 12, "kind": "generic_api_key", "redacted": "sk-Ab3C…"}],
+  "contradictions": []
+}
+```
+
+#### `zarif_suggest(file_path, project_root=".")`
+
+Talimat dosyasında eksik operasyonel bilgileri tespit eder (öneri modu).
+Dosyaya **asla yazmaz** — Prensip 1 uyumlu. CLI'daki `zarif suggest` ile aynı.
+
+```json
+{
+  "file": "CLAUDE.md",
+  "suggestions": [
+    {"category": "env-var", "title": "ENV: DATABASE_URL", "detail": ".env.example'de tanımlı", "source_file": ".env.example", "suggested_text": "- `DATABASE_URL`"}
+  ]
+}
+```
+
+#### `zarif_hierarchy(directory=".")`
+
+Bir dizin altındaki tüm talimat dosyalarını keşfeder, tekrar eden paragrafları
+bulur. CLI'daki `zarif hierarchy` ile aynı.
+
+```json
+{
+  "directory": "/path/to/project",
+  "files": [{"path": "CLAUDE.md", "depth": 0, "tokens": 850}],
+  "duplicates": [{"preview": "Her zaman yedek al...", "keep_in": "CLAUDE.md", "remove_from": "sub/AGENTS.md", "similarity": 0.95}]
+}
+```
+
+#### `zarif_score(target=".", project_root="")`
+
+Bir dosya veya dizin için 0-100 sağlık skoru hesaplar. CLI'daki `zarif score`
+ile aynı. `target` dosyaysa `project_root` ile audit/suggest kökü verilebilir.
+
+```json
+{
+  "target": "CLAUDE.md",
+  "score": 72,
+  "grade": "C",
+  "token_count": 850,
+  "is_directory": false,
+  "categories": [
+    {"name": "tokens", "label": "Token sayısı", "findings": 1, "points_deducted": 5, "max_deduction": 20, "details": ["850 token (hedef: ≤500)"]}
+  ]
+}
+```
+
 ## 6. Uçtan uca örnek akış
 
 Host'unuzdaki sohbette (ör. "CLAUDE.md dosyasını sadeleştir" dediğinizde

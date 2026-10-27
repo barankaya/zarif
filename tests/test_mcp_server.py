@@ -342,3 +342,107 @@ def test_zarif_benchmark_discard_removes_session(monkeypatch: pytest.MonkeyPatch
 
     assert result == {"discarded": True}
     assert "xyz" not in mcp_server._BENCHMARK_SESSIONS
+
+
+# ---------------------------------------------------------------------------
+# Deterministik MCP araçları (audit, suggest, hierarchy, score)
+# ---------------------------------------------------------------------------
+
+
+def test_register_tools_includes_deterministic_tools():
+    """register_tools deterministik araçları da tanımlamalı."""
+    server = _FakeServer()
+    register_tools(server)
+
+    for name in ("zarif_audit", "zarif_suggest", "zarif_hierarchy", "zarif_score"):
+        assert name in server.registered, f"{name} tanımlı değil"
+
+
+def test_zarif_audit_mcp_tool(tmp_path: Path):
+    """zarif_audit MCP aracı dosyayı denetlemeli."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text(
+        "# Talimat\n\n"
+        "api_key = \"sk-Ab3Cd4Ef5Gh6Ij7Kl8Mn9\"\n",
+        encoding="utf-8",
+    )
+
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_audit"](
+        file_path=str(target), project_root=str(tmp_path)
+    ))
+
+    assert result["file"] == str(target)
+    assert "dead_rules" in result
+    assert "secrets" in result
+    assert "contradictions" in result
+    # Secret bulunmuş olmalı.
+    assert len(result["secrets"]) >= 1
+
+
+def test_zarif_suggest_mcp_tool(tmp_path: Path):
+    """zarif_suggest MCP aracı eksik bilgileri tespit etmeli."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nKısa metin.\n", encoding="utf-8")
+    (tmp_path / ".env.example").write_text("DATABASE_URL=postgres://localhost/db\n", encoding="utf-8")
+
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_suggest"](
+        file_path=str(target), project_root=str(tmp_path)
+    ))
+
+    assert result["file"] == str(target)
+    assert "suggestions" in result
+    # DATABASE_URL önerilmeli.
+    titles = [s["title"] for s in result["suggestions"]]
+    assert any("DATABASE_URL" in t for t in titles)
+
+
+def test_zarif_hierarchy_mcp_tool(tmp_path: Path):
+    """zarif_hierarchy MCP aracı dosyaları keşfetmeli."""
+    (tmp_path / "CLAUDE.md").write_text("# Talimat\n\nMetin.\n", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "AGENTS.md").write_text("# Agent\n\nMetin.\n", encoding="utf-8")
+
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_hierarchy"](directory=str(tmp_path)))
+
+    assert "files" in result
+    assert "duplicates" in result
+    assert len(result["files"]) >= 2
+
+
+def test_zarif_score_mcp_tool_file(tmp_path: Path):
+    """zarif_score MCP aracı dosya için skor hesaplamalı."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nKısa metin.\n", encoding="utf-8")
+
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_score"](target=str(target)))
+
+    assert "score" in result
+    assert "grade" in result
+    assert "categories" in result
+    assert 0 <= result["score"] <= 100
+    assert result["is_directory"] is False
+
+
+def test_zarif_score_mcp_tool_directory(tmp_path: Path):
+    """zarif_score MCP aracı dizin için skor hesaplamalı."""
+    (tmp_path / "CLAUDE.md").write_text("# Talimat\n\nMetin.\n", encoding="utf-8")
+
+    server = _FakeServer()
+    register_tools(server)
+
+    result = asyncio.run(server.registered["zarif_score"](target=str(tmp_path)))
+
+    assert result["is_directory"] is True
+    assert 0 <= result["score"] <= 100

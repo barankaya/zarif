@@ -239,6 +239,20 @@ zarif batch . --json
 Her dosya için pipeline çalışır, özet tablo gösterilir; onay sonrası tüm
 dosyalara yedek alarak yazılır. `--json` ile makine-okunur çıktı alınır.
 
+## Sağlık skoru (score)
+
+Mevcut tüm deterministik kontrolleri (token, ölü kural, secret/PII, çelişki,
+eksik operasyonel bilgi, tekrar eden paragraf) tek bir 0-100 skorda birleştirir:
+
+```powershell
+zarif score CLAUDE.md
+zarif score . --json
+zarif score . --fail-under 80   # CI gate: skor 80'in altındaysa exit 1
+```
+
+Dizin modunda dosyalar arası tekrar eden paragraflar da skora dahil edilir.
+LLM/ağ gerektirmez.
+
 ## Zenginleştirme önerisi (suggest)
 
 Talimat dosyasında eksik operasyonel bilgileri (ortam değişkenleri, build
@@ -299,7 +313,8 @@ pytest
 ```
 src/zarif/
   api.py             Kütüphane API'si: `edit_file()`, `edit_text()`, `EditResult`
-  cli.py             Typer CLI: `edit`, `batch`, `suggest`, `restore`, `hierarchy`, `audit`, `benchmark`, `dashboard`, `serve`
+  cli.py             Typer CLI: `edit`, `batch`, `score`, `suggest`, `restore`, `hierarchy`, `audit`, `benchmark`, `dashboard`, `serve`
+  score.py           0-100 sağlık skoru: audit+suggest+hierarchy+token'ı birleştirir (LLM'siz)
   suggest.py         Gotcha mining / zenginleştirme önerisi (LLM'siz, dosyaya yazmaz)
   io_utils.py        Encoding/satır sonu koruma, yedekleme, kod/tablo koruma
   diffing.py         Unified diff üretimi ve renkli terminal çıktısı

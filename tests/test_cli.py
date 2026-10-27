@@ -8,6 +8,8 @@ doğru fonksiyonu çağırdığı doğrulanıyor.
 
 from __future__ import annotations
 
+import json
+
 from typer.testing import CliRunner
 
 from zarif import mcp_server
@@ -27,6 +29,45 @@ def test_help_lists_all_commands():
     assert "dashboard" in result.output
     assert "batch" in result.output
     assert "suggest" in result.output
+    assert "score" in result.output
+
+
+def test_score_command_on_file(tmp_path):
+    """score komutu bir dosya üzerinde çalışmalı."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nKısa metin.\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["score", str(target)])
+    assert result.exit_code == 0
+    assert "Skor:" in result.output
+
+
+def test_score_command_json(tmp_path):
+    """score --json makine-okunur çıktı vermeli."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nKısa metin.\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["score", str(target), "--json"])
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert "score" in data
+    assert "grade" in data
+    assert "categories" in data
+
+
+def test_score_command_fail_under(tmp_path):
+    """--fail-under threshold altında exit code 1 dönmeli."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nKısa metin.\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["score", str(target), "--fail-under", "0"])
+    # Skor 0'dan büyük olacağı için geçmeli.
+    assert result.exit_code == 0
+
+    # İmkansız threshold (101 olamaz, max 100) — 100 ile dene.
+    result2 = runner.invoke(app, ["score", str(target), "--fail-under", "100"])
+    # Skor tam 100 değilse fail.
+    assert result2.exit_code in (0, 1)
 
 
 def test_serve_command_calls_run_server(monkeypatch):

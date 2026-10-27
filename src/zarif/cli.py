@@ -408,6 +408,70 @@ def dashboard(
 
 
 @app.command()
+def score(
+    target: Path = typer.Argument(
+        Path("."), exists=True,
+        help="Skorlanacak talimat dosyası veya dizin (varsayılan: mevcut dizin).",
+    ),
+    project_root: Optional[Path] = typer.Option(
+        None, "--project-root", exists=True, file_okay=False, dir_okay=True,
+        help="Audit/suggest için konfigürasyon dosyalarının aranacağı kök (varsayılan: target'ın üst dizini).",
+    ),
+    fail_under: Optional[int] = typer.Option(
+        None, "--fail-under", min=0, max=100,
+        help="Skor bu değerin altındaysa exit code 1 döner (CI gate için).",
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
+) -> None:
+    """Bir talimat dosyası veya dizin için 0-100 sağlık skoru hesaplar.
+
+    Mevcut tüm deterministik kontrolleri birleştirir: token sayısı, ölü
+    kurallar, secret/PII, çelişkiler, eksik operasyonel bilgi ve (dizin
+    modunda) tekrar eden paragraflar. LLM/ağ gerektirmez.
+
+    CI'da `--fail-under 80` ile skor threshold'una göre fail edebilir.
+    """
+    from .score import render_score, score_directory, score_file
+
+    if target.is_dir():
+        report = score_directory(target)
+    else:
+        text = read_source(str(target)).text
+        root = (project_root or target.parent).resolve()
+        report = score_file(text, root, str(target))
+
+    if as_json:
+        payload = {
+            "target": report.target,
+            "score": report.score,
+            "grade": report.grade,
+            "token_count": report.token_count,
+            "is_directory": report.is_directory,
+            "categories": [
+                {
+                    "name": c.name,
+                    "label": c.label,
+                    "findings": c.findings,
+                    "points_deducted": c.points_deducted,
+                    "max_deduction": c.max_deduction,
+                    "details": c.details,
+                }
+                for c in report.categories
+            ],
+        }
+        print(json.dumps(payload, ensure_ascii=False, indent=2))
+    else:
+        from rich.markdown import Markdown
+
+        console.print(f"[bold]Zarif score[/bold] — {report.target}\n")
+        console.print(Markdown(render_score(report)))
+
+    if fail_under is not None and report.score < fail_under:
+        console.print(f"\n[red]Skor {report.score} < {fail_under} — FAIL[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
 def suggest(
     file: Path = typer.Argument(..., exists=True, readable=True, help="Öneri üretilecek talimat dosyası."),
     project_root: Path = typer.Option(

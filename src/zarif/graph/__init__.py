@@ -1,3 +1,3 @@
-from .build import build_graph
+from .build import RECURSION_LIMIT, build_graph, make_config
 
-__all__ = ["build_graph"]
+__all__ = ["RECURSION_LIMIT", "build_graph", "make_config"]

@@ -14,7 +14,7 @@ from rich.table import Table
 from .audit import merge_sarif, render_sarif, run_audit
 from .benchmark.dashboard import BenchmarkRow, format_score, render_html
 from .benchmark.downstream import get_task_for, run_downstream
-from .graph import build_graph
+from .graph import build_graph, make_config
 from .hierarchy import discover_instruction_files, find_cross_file_duplicates
 from .io_utils import (
     ensure_utf8_streams,
@@ -48,6 +48,10 @@ def edit(
         None, "--max-tokens", min=1,
         help="Düzenlenmiş metnin en fazla kaç token olacağı (bütçe). Boşsa sınırsız.",
     ),
+    chunk_tokens: Optional[int] = typer.Option(
+        None, "--chunk-tokens", min=1,
+        help="Büyük dosyaları bu boyutta (token) başlık parçalarına bölüp tek tek işler. Boşsa tek parça.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Onayı atla, doğrudan yaz."),
 ) -> None:
     """Bir markdown talimat dosyasını sadeleştirir, diff gösterir, onaylanırsa yazar."""
@@ -57,7 +61,7 @@ def edit(
     verifier = get_chat_model(verifier_model or editor_model)
     graph = build_graph(editor, verifier)
 
-    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    config = make_config(str(uuid.uuid4()))
     initial_state = {
         "file_path": str(file),
         "encoding": source.encoding,
@@ -65,6 +69,7 @@ def edit(
         "raw_original_text": source.text,
         "max_attempts": max_attempts,
         "max_tokens": max_tokens,
+        "chunk_tokens": chunk_tokens,
     }
 
     console.print(f"[bold]Zarif[/bold] — {file} işleniyor...")
@@ -689,6 +694,10 @@ def batch(
         None, "--max-tokens", min=1,
         help="Düzenlenmiş metnin en fazla kaç token olacağı (bütçe). Boşsa sınırsız.",
     ),
+    chunk_tokens: Optional[int] = typer.Option(
+        None, "--chunk-tokens", min=1,
+        help="Büyük dosyaları bu boyutta (token) başlık parçalarına bölüp tek tek işler. Boşsa tek parça.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Onayı atla, tüm dosyalara doğrudan yaz."),
     as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
 ) -> None:
@@ -714,7 +723,14 @@ def batch(
         rel = f.path.relative_to(root)
         console.print(f"  • {rel} ... ", end="")
         try:
-            result = edit_file(str(f.path), editor_model=editor_model, verifier_model=verifier_model, max_attempts=max_attempts, max_tokens=max_tokens)
+            result = edit_file(
+                str(f.path),
+                editor_model=editor_model,
+                verifier_model=verifier_model,
+                max_attempts=max_attempts,
+                max_tokens=max_tokens,
+                chunk_tokens=chunk_tokens,
+            )
             has_change = bool(result.diff_text.strip())
             status = "✅" if (has_change and result.sufficient) else ("⚠️" if has_change else "—")
             console.print(f"{status} {result.token_report['before']} → {result.token_report['after']} ({result.token_report['reduction_pct']}%)")

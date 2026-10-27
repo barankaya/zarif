@@ -80,6 +80,20 @@ zarif edit CLAUDE.md --max-tokens 500
 belirleyebilirsiniz. Model bu bütçeye uymaya çalışır; uyarırsa
 `human_review` adımında uyarı gösterilir.
 
+```powershell
+zarif edit uzun-rapor.md --chunk-tokens 1500
+```
+
+`--chunk-tokens N` büyük dosyayı ~N token'lık bölümlere ayırır (önce başlık
+sınırlarından, gerekirse boş satırlardan; kod blokları/tablolar zaten korumalıdır,
+asla bölünmez) ve her bölümü ayrı ayrı extract → propose → verify
+döngüsünden geçirir; `--max-tokens` bütçesi bölümlere orantılı dağıtılır. Tek
+model çağrısı kısalır (yerel küçük modellerin bağlam penceresi ve MCP host
+timeout'ları için faydalı), ama **bölümler arası tekrar/çelişki görülemez**;
+bu yüzden sonuçta bir uyarı gösterilir. Boş bırakılırsa dosya tek parçadır.
+Kütüphane API'sinde `edit_file(..., chunk_tokens=N)`, MCP'de
+`zarif_propose_edit(..., chunk_tokens=N)`.
+
 Model spesifikasyonu `provider:model_adı` biçiminde; şu an `ollama` ve `openai`
 sağlayıcıları destekleniyor (bkz. [`src/zarif/models.py`](src/zarif/models.py)).
 Bağımsız bir model kurulumuna hiç gerek duymadan kullanmak için aşağıdaki
@@ -385,6 +399,7 @@ src/zarif/
   hierarchy.py       Çoklu dosya keşfi + dosyalar arası tekrar eden paragraf tespiti (LLM'siz)
   audit.py           Ölü kural / secret-PII / çelişki / bayat referans tespiti + SARIF çıktısı (LLM'siz)
   fix.py             Audit bulgularının deterministik düzeltmesi (secret maskeleme, ölü madde silme)
+  chunking.py        Büyük dokümanı başlık sınırlarından parçalara böler (--chunk-tokens)
   graph/              LangGraph düğümleri, prompt'lar, structured output şemaları
   benchmark/samples/  Örnek (bilinçli şişirilmiş) talimat dosyaları (5 dosya)
   benchmark/dashboard.py  Tüm ölçütleri birleştiren HTML pano render'ı

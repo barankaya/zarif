@@ -239,7 +239,15 @@ def _progress_payload(graph: Any, config: dict, session_id: str, source_text: st
         "session_id": session_id,
         "status": "in_progress",
         "next_step": next_nodes[0],
+        **_chunk_progress(snapshot.values),
     }
+
+
+def _chunk_progress(values: dict) -> dict:
+    total = len(values.get("chunks", ()))
+    if total <= 1:
+        return {}
+    return {"chunk": {"index": min(values.get("chunk_index", 0) + 1, total), "total": total}}
 
 
 # run_id -> {"graph", "files", "file_index", "max_attempts", "results", "config", "source_text"};
@@ -288,6 +296,7 @@ def register_tools(server: Any) -> None:
         file_path: str,
         max_attempts: int = 2,
         editor_model: Optional[str] = None,
+        chunk_tokens: Optional[int] = None,
     ) -> dict:
         """Bir markdown talimat dosyası için düzenleme oturumu başlatır (henüz model çağırmaz).
 
@@ -297,6 +306,10 @@ def register_tools(server: Any) -> None:
         sürece `zarif_continue_edit`'i tekrar tekrar çağırın — her çağrı EN FAZLA bir
         sampling round-trip'i yapar. `status="ready_to_apply"` olduğunda `diff` hazırdır;
         onaylarsanız `zarif_apply_edit`'i, reddederseniz `zarif_discard_edit`'i çağırın.
+
+        `chunk_tokens` verilirse belge bu boyutta başlık parçalarına bölünür ve her
+        sampling çağrısı yalnızca bir parçayı işler (büyük dosyalarda tek çağrı zaman aşımını
+        önler); `in_progress` yanıtındaki `chunk` alanı ilerlemeyi gösterir.
         """
         source = read_source(file_path)
         loop = asyncio.get_running_loop()
@@ -315,6 +328,7 @@ def register_tools(server: Any) -> None:
             "newline": source.newline,
             "raw_original_text": source.text,
             "max_attempts": max_attempts,
+            "chunk_tokens": chunk_tokens,
         }
         # Sadece "parse" çalışır (yerel, LLM'siz) ve "extract_critical" öncesinde durur.
         await asyncio.to_thread(graph.invoke, initial_state, config)

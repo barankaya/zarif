@@ -149,6 +149,7 @@ Bir markdown dosyası için düzenleme oturumu **başlatır** — hiçbir sampli
 | `file_path` | `string` | (zorunlu) | Düzenlenecek markdown dosyasının yolu. |
 | `max_attempts` | `integer` | `2` | `verify_retention` başarısız olursa kaç kez yeniden denenir. |
 | `editor_model` | `string \| null` | `null` | Verilirse sampling yerine bu sağlayıcı kullanılır (bkz. Bölüm 7). |
+| `chunk_tokens` | `integer \| null` | `null` | Verilirse belge ~bu boyutta başlık parçalarına bölünür; her `zarif_continue_edit` yalnızca tek parçayı işler. Büyük dosyalarda tek round-trip'in bile host timeout'una takılmasını önler. `in_progress` yanıtına `"chunk": {"index": 2, "total": 5}` eklenir; parçalar arası tekrar/çelişki değerlendirilemediği için sonuç `warnings`'inde belirtilir. Önerilen başlangıç: `1500`. |
 
 Dönüş:
 

@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Optional
 
-from .graph import build_graph
+from .graph import build_graph, make_config
 from .io_utils import make_backup, read_source, write_target
 from .models import get_chat_model
 from .tokens import token_report
@@ -117,6 +117,7 @@ def edit_file(
     verifier_model: Optional[str] = None,
     max_attempts: int = 2,
     max_tokens: Optional[int] = None,
+    chunk_tokens: Optional[int] = None,
 ) -> EditResult:
     """Bir markdown talimat dosyası için düzenleme önerir (diske YAZMAZ).
 
@@ -126,6 +127,8 @@ def edit_file(
         verifier_model: Doğrulayıcı model; boşsa ``editor_model`` ile aynı.
         max_attempts: Bilgi kaybı durumunda propose_edit'e geri dönme hakkı.
         max_tokens: Düzenlenmiş metnin en fazla kaç token olacağı. ``None`` ise sınırsız.
+        chunk_tokens: Belge bu boyutta (token) başlık sınırlarından parçalara bölünüp
+            parça parça işlenir. ``None`` ise tek parça. Parçalar arası tekrarlar yakalanmaz.
 
     Returns:
         :class:`EditResult` — ``apply()`` ile diske yazılır, ``discard()`` ile
@@ -137,7 +140,7 @@ def edit_file(
     verifier = get_chat_model(verifier_model or editor_model)
     graph = build_graph(editor, verifier)
 
-    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    config = make_config(str(uuid.uuid4()))
     result = graph.invoke(
         {
             "file_path": file_path,
@@ -146,6 +149,7 @@ def edit_file(
             "raw_original_text": source.text,
             "max_attempts": max_attempts,
             "max_tokens": max_tokens,
+            "chunk_tokens": chunk_tokens,
         },
         config,
     )
@@ -177,6 +181,7 @@ def edit_text(
     verifier_model: Optional[str] = None,
     max_attempts: int = 2,
     max_tokens: Optional[int] = None,
+    chunk_tokens: Optional[int] = None,
     *,
     file_path: str = "<memory>",
     encoding: str = "utf-8",
@@ -193,6 +198,7 @@ def edit_text(
         verifier_model: Doğrulayıcı model; boşsa ``editor_model`` ile aynı.
         max_attempts: Bilgi kaybı durumunda retry hakkı.
         max_tokens: Düzenlenmiş metnin en fazla kaç token olacağı. ``None`` ise sınırsız.
+        chunk_tokens: Bkz. :func:`edit_file`.
         file_path: Sanal dosya adı (log/diff çıktısında görünür).
         encoding: Metnin encoding'i (varsayılan utf-8).
         newline: Satır sonu karakteri (varsayılan ``"\\n"``).
@@ -204,7 +210,7 @@ def edit_text(
     verifier = get_chat_model(verifier_model or editor_model)
     graph = build_graph(editor, verifier)
 
-    config = {"configurable": {"thread_id": str(uuid.uuid4())}}
+    config = make_config(str(uuid.uuid4()))
     result = graph.invoke(
         {
             "file_path": file_path,
@@ -213,6 +219,7 @@ def edit_text(
             "raw_original_text": text,
             "max_attempts": max_attempts,
             "max_tokens": max_tokens,
+            "chunk_tokens": chunk_tokens,
         },
         config,
     )

@@ -13,12 +13,19 @@ class ZarifState(TypedDict, total=False):
     raw_original_text: str
     max_attempts: int
     max_tokens: int | None  # Token bütçesi (None = sınırsız)
+    chunk_tokens: int | None  # Docüman bu boyutta parçalara bölünür (None = tek parça)
 
     # Set by parse.
     working_text: str
     protected_map: dict[str, str]
     attempt: int
     warnings: list[str]
+    chunks: list[str]
+    chunk_index: int
+    edited_chunks: list[str]
+    all_sufficient: bool
+    all_missing_items: list[dict]
+    all_new_claims: list[str]
 
     # Set by extract_critical.
     critical_items: list[dict]

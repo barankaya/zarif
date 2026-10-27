@@ -132,6 +132,36 @@ def test_zarif_propose_edit_with_explicit_model_skips_sampling(tmp_path: Path, m
     assert session_id in mcp_server._SESSIONS
 
 
+def test_zarif_propose_edit_with_chunk_tokens_reports_chunk_progress(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    body = " ".join(["word"] * 40)
+    sample = tmp_path / "big.md"
+    sample.write_text("".join(f"# S{i}\n{body}\n\n" for i in (1, 2, 3)), encoding="utf-8")
+
+    monkeypatch.setattr(mcp_server, "get_chat_model", lambda spec: _FakeChatModel())
+
+    server = _FakeServer()
+    register_tools(server)
+
+    propose = asyncio.run(
+        server.registered["zarif_propose_edit"](
+            ctx=None, file_path=str(sample), editor_model="fake:model", chunk_tokens=60
+        )
+    )
+    assert propose["chunk"] == {"index": 1, "total": 3}
+
+    seen = [propose["chunk"]["index"]]
+    result = propose
+    for _ in range(30):
+        result = asyncio.run(server.registered["zarif_continue_edit"](propose["session_id"]))
+        if result["status"] == "ready_to_apply":
+            break
+        seen.append(result["chunk"]["index"])
+
+    assert result["status"] == "ready_to_apply"
+    assert sorted(set(seen)) == [1, 2, 3]
+    assert "3 parçaya" in " ".join(result["warnings"])
+
+
 def test_zarif_continue_edit_unknown_session_raises():
     server = _FakeServer()
     register_tools(server)

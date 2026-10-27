@@ -6,15 +6,24 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, StateGraph
 
 from .nodes import (
+    advance_chunk_node,
     human_review_node,
     make_extract_critical_node,
     make_propose_edit_node,
     make_verify_retention_node,
     parse_node,
+    route_after_chunk,
     route_after_verification,
     write_node,
 )
 from .state import ZarifState
+
+# LangGraph'ın varsayılan 25 adım sınırı, parça başına ~4+ adım harcayan çok parçalı dokümanlara yetmez.
+RECURSION_LIMIT = 1000
+
+
+def make_config(thread_id: str) -> dict:
+    return {"configurable": {"thread_id": thread_id}, "recursion_limit": RECURSION_LIMIT}
 
 
 def build_graph(editor_model, verifier_model, checkpointer=None, *, step_by_step: bool = False):
@@ -24,6 +33,7 @@ def build_graph(editor_model, verifier_model, checkpointer=None, *, step_by_step
     graph.add_node("extract_critical", make_extract_critical_node(editor_model))
     graph.add_node("propose_edit", make_propose_edit_node(editor_model))
     graph.add_node("verify_retention", make_verify_retention_node(verifier_model))
+    graph.add_node("advance_chunk", advance_chunk_node)
     graph.add_node("human_review", human_review_node)
     graph.add_node("write", write_node)
 
@@ -31,10 +41,16 @@ def build_graph(editor_model, verifier_model, checkpointer=None, *, step_by_step
     graph.add_edge("parse", "extract_critical")
     graph.add_edge("extract_critical", "propose_edit")
     graph.add_edge("propose_edit", "verify_retention")
+    # route_after_verification "human_review" döndüğünde önce parçayı kapatan advance_chunk'a gidilir.
     graph.add_conditional_edges(
         "verify_retention",
         route_after_verification,
-        {"propose_edit": "propose_edit", "human_review": "human_review"},
+        {"propose_edit": "propose_edit", "human_review": "advance_chunk"},
+    )
+    graph.add_conditional_edges(
+        "advance_chunk",
+        route_after_chunk,
+        {"extract_critical": "extract_critical", "human_review": "human_review"},
     )
     graph.add_edge("human_review", "write")
     graph.add_edge("write", END)

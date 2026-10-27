@@ -1,0 +1,7 @@
+- id: zarif-check
+  name: zarif check
+  description: Talimat dosyalarında (CLAUDE.md, AGENTS.md, SKILL.md, ...) secret/PII, ölü kural ve bayat referans kontrolü.
+  entry: zarif check
+  language: python
+  files: (?i)(^|/)(claude(\.local)?\.md|agents\.md|skill\.md|\.cursorrules|[^/]*copilot-instructions\.md)$
+  pass_filenames: true

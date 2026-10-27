@@ -1,0 +1,41 @@
+name: Zarif check
+description: Talimat dosyalarını (CLAUDE.md, AGENTS.md, ...) denetler; secret bulunursa veya skor eşiğin altındaysa fail eder.
+
+inputs:
+  paths:
+    description: Boşlukla ayrılmış dosya/dizin listesi.
+    default: "."
+  fail-under:
+    description: Bir dosyanın skoru bu değerin altındaysa fail et (0-100). Boşsa yalnızca secret fail ettirir.
+    default: ""
+  upload-sarif:
+    description: "true ise bulguları GitHub Code Scanning'e yükle (job'a `security-events: write` izni gerekir)."
+    default: "false"
+  python-version:
+    description: Kullanılacak Python sürümü.
+    default: "3.12"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+    - name: Install zarif
+      shell: bash
+      run: python -m pip install "${{ github.action_path }}"
+    - name: zarif check
+      shell: bash
+      env:
+        ZARIF_PATHS: ${{ inputs.paths }}
+        ZARIF_FAIL_UNDER: ${{ inputs.fail-under }}
+      run: |
+        read -ra paths <<< "$ZARIF_PATHS"
+        args=()
+        if [ -n "$ZARIF_FAIL_UNDER" ]; then args+=(--fail-under "$ZARIF_FAIL_UNDER"); fi
+        zarif check "${paths[@]}" --sarif zarif.sarif "${args[@]}"
+    - name: Upload SARIF
+      if: always() && inputs.upload-sarif == 'true' && hashFiles('zarif.sarif') != ''
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: zarif.sarif

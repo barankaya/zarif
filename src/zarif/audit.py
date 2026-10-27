@@ -509,6 +509,21 @@ def run_audit(text: str, project_root: Path, file_dir: Optional[Path] = None) ->
     )
 
 
+def merge_sarif(docs: list[dict]) -> dict:
+    """Combine several single-file SARIF documents into one run (rules de-duplicated by id)."""
+    merged = render_sarif(AuditResult([], [], []), "")
+    run = merged["runs"][0]
+    seen: set[str] = set()
+    for doc in docs:
+        for r in doc["runs"]:
+            for rule in r["tool"]["driver"]["rules"]:
+                if rule["id"] not in seen:
+                    seen.add(rule["id"])
+                    run["tool"]["driver"]["rules"].append(rule)
+            run["results"].extend(r["results"])
+    return merged
+
+
 def render_sarif(result: AuditResult, file_path: str) -> dict:
     """Render an AuditResult as a minimal SARIF 2.1.0 document (GitHub Code Scanning)."""
     rules: list[dict] = []

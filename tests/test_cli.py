@@ -114,3 +114,52 @@ def test_batch_help_shows_options():
     assert "--editor-model" in result.output
     assert "--yes" in result.output
     assert "--json" in result.output
+
+
+def test_check_passes_on_clean_file(tmp_path):
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nKısa metin.\n", encoding="utf-8")
+
+    result = runner.invoke(app, ["check", str(target), "--project-root", str(tmp_path), "--json"])
+
+    assert result.exit_code == 0
+    data = json.loads(result.output)
+    assert data["passed"] is True
+    assert data["files"][0]["secrets"] == 0
+
+
+def test_check_fails_on_secret(tmp_path):
+    target = tmp_path / "AGENTS.md"
+    target.write_text('# Talimat\n\nAWS_ACCESS_KEY_ID=AKIAQ7K3M9X2B5N8R1T4\n', encoding="utf-8")
+
+    result = runner.invoke(app, ["check", str(target), "--project-root", str(tmp_path)])
+
+    assert result.exit_code == 1
+
+
+def test_check_discovers_files_in_directory_and_writes_merged_sarif(tmp_path):
+    (tmp_path / "CLAUDE.md").write_text("See `docs/gone.md`.\n", encoding="utf-8")
+    (tmp_path / "sub").mkdir()
+    (tmp_path / "sub" / "AGENTS.md").write_text("See `docs/also-gone.md`.\n", encoding="utf-8")
+    sarif = tmp_path / "out.sarif"
+
+    result = runner.invoke(
+        app, ["check", str(tmp_path), "--project-root", str(tmp_path), "--sarif", str(sarif), "--json"]
+    )
+
+    assert result.exit_code == 0  # bayat referans tek başına fail ettirmez
+    assert len(json.loads(result.output)["files"]) == 2
+    doc = json.loads(sarif.read_text(encoding="utf-8"))
+    assert len(doc["runs"][0]["results"]) == 2
+    assert [r["id"] for r in doc["runs"][0]["tool"]["driver"]["rules"]] == ["zarif/stale-reference"]
+
+
+def test_check_fail_under_and_missing_path(tmp_path):
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\n" + ("Dolgu cümlesi, hiçbir anlam taşımaz. " * 400), encoding="utf-8")
+
+    low = runner.invoke(app, ["check", str(target), "--project-root", str(tmp_path), "--fail-under", "100"])
+    missing = runner.invoke(app, ["check", str(tmp_path / "nope.md")])
+
+    assert low.exit_code == 1
+    assert missing.exit_code == 2

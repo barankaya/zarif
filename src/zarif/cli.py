@@ -11,7 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from .audit import render_sarif, run_audit
+from .audit import merge_sarif, render_sarif, run_audit
 from .benchmark.dashboard import BenchmarkRow, format_score, render_html
 from .benchmark.downstream import get_task_for, run_downstream
 from .graph import build_graph
@@ -477,6 +477,95 @@ def score(
 
     if fail_under is not None and report.score < fail_under:
         console.print(f"\n[red]Skor {report.score} < {fail_under} — FAIL[/red]")
+        raise typer.Exit(1)
+
+
+@app.command()
+def check(
+    paths: list[Path] = typer.Argument(
+        None, help="Kontrol edilecek talimat dosyaları veya dizinler (varsayılan: mevcut dizin)."
+    ),
+    project_root: Path = typer.Option(
+        Path("."), "--project-root", exists=True, file_okay=False, dir_okay=True,
+        help="Konfigürasyon ve referansların doğrulanacağı proje kökü.",
+    ),
+    fail_under: Optional[int] = typer.Option(
+        None, "--fail-under", min=0, max=100,
+        help="Herhangi bir dosyanın skoru bu değerin altındaysa exit code 1 döner.",
+    ),
+    sarif: Optional[Path] = typer.Option(
+        None, "--sarif", help="Tüm dosyaların bulgularını tek SARIF 2.1.0 dosyası olarak yaz."
+    ),
+    as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
+) -> None:
+    """CI/pre-commit kapısı: audit + score'u çoklu dosya üzerinde çalıştırır.
+
+    Exit code 1: herhangi bir dosyada olası secret/PII bulunursa (her zaman) ya da
+    `--fail-under` verilmiş ve bir dosyanın skoru eşiğin altındaysa. Diğer bulgular
+    (ölü kural, bayat referans, çelişki) raporlanır ama tek başına fail ettirmez.
+    Dizin verilirse bilinen talimat dosyaları (CLAUDE.md, AGENTS.md, ...) otomatik bulunur.
+    """
+    from .score import score_file
+
+    root = project_root.resolve()
+    files: list[Path] = []
+    for p in paths or [Path(".")]:
+        if not p.exists():
+            console.print(f"[red]Bulunamadı: {p}[/red]")
+            raise typer.Exit(2)
+        if p.is_dir():
+            files.extend(f.path for f in discover_instruction_files(p))
+        else:
+            files.append(p.resolve())
+    files = list(dict.fromkeys(files))
+
+    rows: list[dict] = []
+    sarif_docs: list[dict] = []
+    failed = False
+    for f in files:
+        text = read_source(str(f)).text
+        result = run_audit(text, root, f.parent)
+        try:
+            display = str(f.relative_to(root))
+        except ValueError:
+            display = str(f)
+        report = score_file(text, root, display)
+        below = fail_under is not None and report.score < fail_under
+        failed = failed or bool(result.secrets) or below
+        sarif_docs.append(render_sarif(result, display.replace("\\", "/")))
+        rows.append(
+            {
+                "file": display,
+                "score": report.score,
+                "grade": report.grade,
+                "secrets": len(result.secrets),
+                "dead_rules": len(result.dead_rules),
+                "stale_references": len(result.stale_references),
+                "contradictions": len(result.contradictions),
+                "failed": bool(result.secrets) or below,
+            }
+        )
+
+    if sarif is not None:
+        sarif.write_text(json.dumps(merge_sarif(sarif_docs), ensure_ascii=False, indent=2), encoding="utf-8")
+
+    if as_json:
+        print(json.dumps({"passed": not failed, "files": rows}, ensure_ascii=False, indent=2))
+    elif not rows:
+        console.print("Kontrol edilecek talimat dosyası bulunamadı.")
+    else:
+        table = Table(show_header=True, header_style="bold")
+        for col in ("Dosya", "Skor", "Secret", "Ölü kural", "Bayat ref.", "Çelişki", "Durum"):
+            table.add_column(col)
+        for r in rows:
+            table.add_row(
+                r["file"], f"{r['score']} ({r['grade']})", str(r["secrets"]), str(r["dead_rules"]),
+                str(r["stale_references"]), str(r["contradictions"]),
+                "[red]FAIL[/red]" if r["failed"] else "[green]OK[/green]",
+            )
+        console.print(table)
+
+    if failed:
         raise typer.Exit(1)
 
 

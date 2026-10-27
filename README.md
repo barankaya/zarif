@@ -310,6 +310,43 @@ zarif audit CLAUDE.md --project-root . --json
 zarif audit CLAUDE.md --sarif zarif-audit.sarif.json   # CI/GitHub Code Scanning
 ```
 
+## CI ve pre-commit (check)
+
+`zarif check`, audit + score'u birden fazla dosya (veya dizin) üzerinde çalıştırır.
+Olası secret/PII bulunursa her zaman exit code 1 döner; `--fail-under N` ile skor
+eşiği de uygulanabilir. Ölü kural / bayat referans / çelişki raporlanır ama tek
+başına fail ettirmez. LLM veya ağ gerektirmez.
+
+```powershell
+zarif check .                                  # dizindeki tüm talimat dosyaları
+zarif check CLAUDE.md AGENTS.md --fail-under 70 --sarif zarif.sarif
+```
+
+pre-commit (`.pre-commit-config.yaml`):
+
+```yaml
+repos:
+  - repo: https://github.com/<sahibi>/zarif
+    rev: v0.1.0
+    hooks:
+      - id: zarif-check
+```
+
+GitHub Actions (bu repodaki `action.yml`; zarif'i action'ın kendi checkout'undan kurar):
+
+```yaml
+permissions:
+  contents: read
+  security-events: write   # yalnızca upload-sarif: "true" ise
+steps:
+  - uses: actions/checkout@v4
+  - uses: <sahibi>/zarif@v0.1.0
+    with:
+      paths: "."
+      fail-under: "70"
+      upload-sarif: "true"
+```
+
 ## Testler
 
 ```powershell

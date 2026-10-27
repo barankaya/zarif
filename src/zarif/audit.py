@@ -261,6 +261,37 @@ def scan_for_secrets(text: str) -> list[SecretFinding]:
     return findings
 
 
+REDACTED_MARKER = "<REDACTED>"
+# A key-block header or an internal IP can't be safely replaced in place, so those stay manual.
+_MANUAL_SECRET_KINDS = frozenset({"private_key_header", "internal_ip"})
+
+
+def redact_secrets(text: str) -> tuple[str, list[SecretFinding]]:
+    """Replace detected secret values with a placeholder, preserving every line number.
+
+    Returns the new text and the findings that were redacted. Same placeholder
+    filtering as `scan_for_secrets`; the marker itself is a placeholder, so this is idempotent.
+    """
+    redacted: list[SecretFinding] = []
+    out_lines: list[str] = []
+    for i, line in enumerate(text.split("\n"), start=1):
+        for kind, pattern, group_idx in SECRET_PATTERNS:
+            if kind in _MANUAL_SECRET_KINDS:
+                continue
+
+            def repl(m: re.Match, kind: str = kind, group_idx: int = group_idx, line_no: int = i) -> str:
+                value = m.group(group_idx)
+                if _looks_like_placeholder(value):
+                    return m.group(0)
+                redacted.append(SecretFinding(line_no=line_no, kind=kind, redacted_snippet=_redact(value)))
+                start, end = m.span(group_idx)
+                return m.group(0)[: start - m.start()] + REDACTED_MARKER + m.group(0)[end - m.start():]
+
+            line = pattern.sub(repl, line)
+        out_lines.append(line)
+    return "\n".join(out_lines), redacted
+
+
 # ---------------------------------------------------------------------------
 # Contradiction hints (experimental, heuristic — not LLM-based)
 # ---------------------------------------------------------------------------

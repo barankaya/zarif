@@ -16,7 +16,14 @@ from .benchmark.dashboard import BenchmarkRow, format_score, render_html
 from .benchmark.downstream import get_task_for, run_downstream
 from .graph import build_graph
 from .hierarchy import discover_instruction_files, find_cross_file_duplicates
-from .io_utils import ensure_utf8_streams, find_latest_backup, read_source, restore_from_backup
+from .io_utils import (
+    ensure_utf8_streams,
+    find_latest_backup,
+    make_backup,
+    read_source,
+    restore_from_backup,
+    write_target,
+)
 from .models import get_chat_model
 from .tokens import token_report
 
@@ -567,6 +574,51 @@ def check(
 
     if failed:
         raise typer.Exit(1)
+
+
+@app.command()
+def fix(
+    file: Path = typer.Argument(..., exists=True, readable=True, dir_okay=False, help="Düzeltilecek talimat dosyası."),
+    project_root: Path = typer.Option(
+        Path("."), "--project-root", exists=True, file_okay=False, dir_okay=True,
+        help="Ölü kural tespiti için konfigürasyon dosyalarının aranacağı kök dizin.",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Onay sormadan (yedek alarak) yaz."),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Yalnızca diff göster, dosyayı değiştirme."),
+) -> None:
+    """Audit'in kesin bulduğu sorunları LLM'siz düzeltir (yalnızca çıkarma/maskeleme).
+
+    - Secret değerleri `<REDACTED>` ile maskelenir (private key ve iç IP elle kalır).
+    - Config tarafından zaten uygulanan kural, tek satırlık alt maddesiz liste maddesiyse silinir.
+    Diff gösterilir, onay istenir, yazmadan önce yedek alınır (`zarif restore` ile geri alınır).
+    """
+    from .diffing import render_diff, unified_diff_text
+    from .fix import apply_safe_fixes
+
+    source = read_source(str(file))
+    result = apply_safe_fixes(source.text, project_root.resolve())
+
+    for note in result.manual:
+        console.print(f"Elle bak: {note}", markup=False, highlight=False)
+
+    if not result.changed:
+        console.print("[green]Otomatik düzeltilecek bir şey yok.[/green]")
+        return
+
+    render_diff(unified_diff_text(source.text, result.fixed_text, file.name))
+    console.print(
+        f"{len(result.redacted_secrets)} secret maskelenecek, "
+        f"{len(result.removed_dead_rules)} ölü kural silinecek."
+    )
+    if dry_run:
+        return
+    if not (yes or typer.confirm("Uygulansın mı?", default=False)):
+        console.print("[yellow]İptal edildi, dosya değiştirilmedi.[/yellow]")
+        return
+
+    backup = make_backup(str(file))
+    write_target(str(file), result.fixed_text, source.encoding, source.newline)
+    console.print(f"[green]Yazıldı.[/green] Yedek: {backup}")
 
 
 @app.command()

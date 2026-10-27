@@ -310,6 +310,22 @@ zarif audit CLAUDE.md --project-root . --json
 zarif audit CLAUDE.md --sarif zarif-audit.sarif.json   # CI/GitHub Code Scanning
 ```
 
+## Otomatik düzeltme (fix)
+
+`zarif fix`, audit'in kesin bulduğu sorunları LLM'siz düzeltir; yalnızca
+çıkarma/maskeleme yapar, yeni bilgi eklemez:
+
+- Secret değerleri `<REDACTED>` ile maskelenir (private key başlığı ve iç IP elle kalır).
+- Bir config dosyası tarafından zaten uygulanan kural, tek satırlık ve alt maddesi
+  olmayan liste maddesiyse silinir; diğer ölü kurallar yalnızca raporlanır.
+
+Diff gösterilir, onay istenir, yazmadan önce yedek alınır (`zarif restore` ile geri alınır).
+
+```powershell
+zarif fix CLAUDE.md --dry-run      # yalnızca diff
+zarif fix CLAUDE.md                # onayla ve uygula
+```
+
 ## CI ve pre-commit (check)
 
 `zarif check`, audit + score'u birden fazla dosya (veya dizin) üzerinde çalıştırır.
@@ -368,6 +384,7 @@ src/zarif/
   mcp_server.py      MCP sunucusu: sampling tabanlı model, propose/apply/discard/restore araçları
   hierarchy.py       Çoklu dosya keşfi + dosyalar arası tekrar eden paragraf tespiti (LLM'siz)
   audit.py           Ölü kural / secret-PII / çelişki / bayat referans tespiti + SARIF çıktısı (LLM'siz)
+  fix.py             Audit bulgularının deterministik düzeltmesi (secret maskeleme, ölü madde silme)
   graph/              LangGraph düğümleri, prompt'lar, structured output şemaları
   benchmark/samples/  Örnek (bilinçli şişirilmiş) talimat dosyaları (5 dosya)
   benchmark/dashboard.py  Tüm ölçütleri birleştiren HTML pano render'ı

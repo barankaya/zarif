@@ -12,6 +12,7 @@ class ZarifState(TypedDict, total=False):
     newline: str
     raw_original_text: str
     max_attempts: int
+    max_tokens: int | None  # Token bütçesi (None = sınırsız)
 
     # Set by parse.
     working_text: str

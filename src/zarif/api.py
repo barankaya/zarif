@@ -113,6 +113,7 @@ def edit_file(
     editor_model: str = "ollama:llama3.1",
     verifier_model: Optional[str] = None,
     max_attempts: int = 2,
+    max_tokens: Optional[int] = None,
 ) -> EditResult:
     """Bir markdown talimat dosyası için düzenleme önerir (diske YAZMAZ).
 
@@ -121,6 +122,7 @@ def edit_file(
         editor_model: Editör model spesifikasyonu (``"provider:model"``).
         verifier_model: Doğrulayıcı model; boşsa ``editor_model`` ile aynı.
         max_attempts: Bilgi kaybı durumunda propose_edit'e geri dönme hakkı.
+        max_tokens: Düzenlenmiş metnin en fazla kaç token olacağı. ``None`` ise sınırsız.
 
     Returns:
         :class:`EditResult` — ``apply()`` ile diske yazılır, ``discard()`` ile
@@ -140,6 +142,7 @@ def edit_file(
             "newline": source.newline,
             "raw_original_text": source.text,
             "max_attempts": max_attempts,
+            "max_tokens": max_tokens,
         },
         config,
     )
@@ -169,6 +172,7 @@ def edit_text(
     editor_model: str = "ollama:llama3.1",
     verifier_model: Optional[str] = None,
     max_attempts: int = 2,
+    max_tokens: Optional[int] = None,
     *,
     file_path: str = "<memory>",
     encoding: str = "utf-8",
@@ -184,6 +188,7 @@ def edit_text(
         editor_model: Editör model spesifikasyonu.
         verifier_model: Doğrulayıcı model; boşsa ``editor_model`` ile aynı.
         max_attempts: Bilgi kaybı durumunda retry hakkı.
+        max_tokens: Düzenlenmiş metnin en fazla kaç token olacağı. ``None`` ise sınırsız.
         file_path: Sanal dosya adı (log/diff çıktısında görünür).
         encoding: Metnin encoding'i (varsayılan utf-8).
         newline: Satır sonu karakteri (varsayılan ``"\\n"``).
@@ -203,6 +208,7 @@ def edit_text(
             "newline": newline,
             "raw_original_text": text,
             "max_attempts": max_attempts,
+            "max_tokens": max_tokens,
         },
         config,
     )

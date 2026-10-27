@@ -54,10 +54,19 @@ def make_propose_edit_node(editor_model):
                 "Önceki denemede şu kritik maddeler kaybolmuştu, bu sürümde geri getir:\n"
                 f"{_format_items(missing)}\n\n"
             )
+        max_tokens = state.get("max_tokens")
+        token_budget = ""
+        if max_tokens is not None:
+            token_budget = (
+                f"IMPORTANT: The edited document must be at most {max_tokens} tokens. "
+                "Prioritize removing filler and redundancy to meet this budget while "
+                "keeping every critical item above.\n\n"
+            )
         document = state["working_text"] if attempt == 1 else state["edited_text"]
         response = chain.invoke(
             {
                 "critical_items": _format_items(state["critical_items"]),
+                "token_budget": token_budget,
                 "retry_note": retry_note,
                 "document": document,
             }
@@ -105,6 +114,18 @@ def human_review_node(state: ZarifState) -> dict:
         warnings.append("Deneme limiti doldu: bazı kritik maddeler hâlâ kayıp olabilir, dikkatli incele.")
     if state.get("new_claims"):
         warnings.append(f"Doğrulayıcı yeni iddia tespit etti: {state['new_claims']}")
+
+    # Token bütçesi kontrolü (gerçek, restore edilmiş metin üzerinde).
+    max_tokens = state.get("max_tokens")
+    if max_tokens is not None:
+        from ..tokens import count_tokens
+
+        actual = count_tokens(final_text)
+        if actual > max_tokens:
+            warnings.append(
+                f"Token bütçesi aşıldı: {actual} / {max_tokens} token. "
+                "Model bütçeye ulaşamadı; manuel olarak kısaltmanız gerekebilir."
+            )
 
     render_diff(diff_text)
     for warning in warnings:

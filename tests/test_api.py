@@ -155,3 +155,46 @@ def test_import_from_package_root():
     assert ef is not None
     assert et is not None
     assert ER is not None
+
+
+def test_edit_file_with_max_tokens(tmp_path: Path, fake_model):
+    """max_tokens parametresi pipeline'a iletilmeli, hata vermemeli."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nUzun ve şişkin metin.\n", encoding="utf-8")
+
+    result = edit_file(str(target), editor_model="fake:model", max_tokens=100)
+
+    assert isinstance(result, EditResult)
+    assert result.sufficient is True
+    result.discard()
+
+
+def test_edit_text_with_max_tokens(fake_model):
+    """edit_text max_tokens ile çalışmalı."""
+    result = edit_text("# Test\n\nMetin.", editor_model="fake:model", max_tokens=50)
+    assert isinstance(result, EditResult)
+    result.discard()
+
+
+def test_max_tokens_warning_when_exceeded(tmp_path: Path, fake_model, monkeypatch):
+    """Model bütçeyi aşarsa warning eklenmeli."""
+    import zarif.graph.nodes as nodes
+
+    # count_tokens'ı bütçeyi aşacak şekilde sabitle.
+    monkeypatch.setattr(nodes, "count_tokens", lambda text: 9999, raising=False)
+    # tokens modülündeki gerçek fonksiyonu da patchle (human_review import eder).
+    import zarif.tokens as tokens_mod
+
+    monkeypatch.setattr(tokens_mod, "count_tokens", lambda text: 9999)
+
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Talimat\n\nMetin.\n", encoding="utf-8")
+
+    result = edit_file(str(target), editor_model="fake:model", max_tokens=100)
+
+    # Bütçe aşıldığı için warning listesinde token bütçesi uyarısı olmalı.
+    budget_warnings = [w for w in result.warnings if "Token bütçesi" in w]
+    assert len(budget_warnings) == 1
+    assert "9999" in budget_warnings[0]
+    assert "100" in budget_warnings[0]
+    result.discard()

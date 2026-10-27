@@ -36,6 +36,7 @@ PROPOSE_EDIT_PROMPT = ChatPromptTemplate.from_messages(
         (
             "human",
             "Critical items that MUST remain present in some form:\n{critical_items}\n\n"
+            "{token_budget}"
             "{retry_note}"
             "Original document:\n\n{document}",
         ),

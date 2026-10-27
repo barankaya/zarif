@@ -73,7 +73,12 @@ pip install -e ".[api]"
 ```powershell
 zarif edit CLAUDE.md --editor-model ollama:llama3.1
 zarif edit CLAUDE.md --editor-model openai:gpt-4o-mini --verifier-model ollama:llama3.1
+zarif edit CLAUDE.md --max-tokens 500
 ```
+
+`--max-tokens N` ile düzenlenmiş metnin en fazla kaç token olacağını
+belirleyebilirsiniz. Model bu bütçeye uymaya çalışır; uyarırsa
+`human_review` adımında uyarı gösterilir.
 
 Model spesifikasyonu `provider:model_adı` biçiminde; şu an `ollama` ve `openai`
 sağlayıcıları destekleniyor (bkz. [`src/zarif/models.py`](src/zarif/models.py)).

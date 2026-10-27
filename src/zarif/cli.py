@@ -37,6 +37,10 @@ def edit(
         None, "--verifier-model", help="Boş bırakılırsa editor-model ile aynısı kullanılır."
     ),
     max_attempts: int = typer.Option(2, "--max-attempts", min=1),
+    max_tokens: Optional[int] = typer.Option(
+        None, "--max-tokens", min=1,
+        help="Düzenlenmiş metnin en fazla kaç token olacağı (bütçe). Boşsa sınırsız.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Onayı atla, doğrudan yaz."),
 ) -> None:
     """Bir markdown talimat dosyasını sadeleştirir, diff gösterir, onaylanırsa yazar."""
@@ -53,6 +57,7 @@ def edit(
         "newline": source.newline,
         "raw_original_text": source.text,
         "max_attempts": max_attempts,
+        "max_tokens": max_tokens,
     }
 
     console.print(f"[bold]Zarif[/bold] — {file} işleniyor...")
@@ -466,6 +471,10 @@ def batch(
         None, "--verifier-model", help="Boş bırakılırsa editor-model ile aynısı kullanılır."
     ),
     max_attempts: int = typer.Option(2, "--max-attempts", min=1),
+    max_tokens: Optional[int] = typer.Option(
+        None, "--max-tokens", min=1,
+        help="Düzenlenmiş metnin en fazla kaç token olacağı (bütçe). Boşsa sınırsız.",
+    ),
     yes: bool = typer.Option(False, "--yes", "-y", help="Onayı atla, tüm dosyalara doğrudan yaz."),
     as_json: bool = typer.Option(False, "--json", help="Sonucu JSON olarak yazdır."),
 ) -> None:
@@ -491,7 +500,7 @@ def batch(
         rel = f.path.relative_to(root)
         console.print(f"  • {rel} ... ", end="")
         try:
-            result = edit_file(str(f.path), editor_model=editor_model, verifier_model=verifier_model, max_attempts=max_attempts)
+            result = edit_file(str(f.path), editor_model=editor_model, verifier_model=verifier_model, max_attempts=max_attempts, max_tokens=max_tokens)
             has_change = bool(result.diff_text.strip())
             status = "✅" if (has_change and result.sufficient) else ("⚠️" if has_change else "—")
             console.print(f"{status} {result.token_report['before']} → {result.token_report['after']} ({result.token_report['reduction_pct']}%)")

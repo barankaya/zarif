@@ -6,7 +6,7 @@ import sys
 
 from rich.console import Console
 
-from ..diffing import render_diff, unified_diff_text
+from ..diffing import render_diff, summarize_diff, unified_diff_text
 from ..io_utils import make_backup, protect_blocks, restore_blocks, write_target
 from .prompts import EXTRACT_CRITICAL_PROMPT, PROPOSE_EDIT_PROMPT, VERIFY_RETENTION_PROMPT
 from .schemas import CriticalItemsResult, RetentionReport
@@ -131,7 +131,14 @@ def human_review_node(state: ZarifState) -> dict:
     for warning in warnings:
         console.print(f"[yellow]⚠ {warning}[/yellow]")
 
-    return {"final_text": final_text, "diff_text": diff_text, "warnings": warnings}
+    change_summary = summarize_diff(diff_text)
+
+    return {
+        "final_text": final_text,
+        "diff_text": diff_text,
+        "warnings": warnings,
+        "change_summary": change_summary,
+    }
 
 
 def write_node(state: ZarifState) -> dict:

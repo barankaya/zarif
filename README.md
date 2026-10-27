@@ -221,9 +221,11 @@ result.apply_to("cikti.md")  # sonucu bir dosyaya yaz
 ```
 
 `EditResult` nesnesi `diff_text`, `token_report`, `sufficient`, `warnings`,
-`missing_items` alanlarını taşır. `apply()` dosyaya yazar (yedek alır),
-`apply_to(path)` farklı bir dosyaya yazar, `discard()` kaynakları serbest
-bırakır.
+`missing_items` ve `change_summary` alanlarını taşır. `change_summary`,
+diff'in deterministik özeti: kaç satır eklendi/silindi, hangi bölümler
+etkilendi, tek cümlelik özet (LLM gerektirmez). `apply()` dosyaya yazar
+(yedek alır), `apply_to(path)` farklı bir dosyaya yazar, `discard()`
+kaynakları serbest bırakır.
 
 ## Toplu işleme (batch)
 

@@ -125,6 +125,10 @@ def test_zarif_propose_edit_with_explicit_model_skips_sampling(tmp_path: Path, m
     assert result["status"] == "ready_to_apply"
     assert result["sufficient"] is True
     assert "token_report" in result
+    # change_summary diff'ten deterministik olarak üretilmeli.
+    assert "change_summary" in result
+    assert isinstance(result["change_summary"], dict)
+    assert "summary" in result["change_summary"]
     assert session_id in mcp_server._SESSIONS
 
 

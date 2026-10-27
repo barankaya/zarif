@@ -34,6 +34,7 @@ class ZarifState(TypedDict, total=False):
     # Set by human_review.
     final_text: str
     diff_text: str
+    change_summary: dict
 
     # Set by write.
     backup_path: str

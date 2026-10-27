@@ -46,6 +46,8 @@ class EditResult:
         warnings: Pipeline sırasında üretilen uyarılar.
         missing_items: Kayıp kritik maddeler (sufficient=False ise dolu).
         new_claims: Orijinalde olmayan yeni iddialar (varsa).
+        change_summary: Diff'in yapılandırılmış özeti (satır ekleme/silme,
+            etkilenen bölümler, tek cümlelik özet). LLM gerektirmez.
     """
 
     file_path: str
@@ -57,6 +59,7 @@ class EditResult:
     warnings: list[str] = field(default_factory=list)
     missing_items: list[dict] = field(default_factory=list)
     new_claims: list[str] = field(default_factory=list)
+    change_summary: dict = field(default_factory=dict)
 
     # Internal — apply() için gerekli.
     _graph: Any = field(default=None, repr=False)
@@ -160,6 +163,7 @@ def edit_file(
         warnings=result.get("warnings", []),
         missing_items=result.get("missing_items", []),
         new_claims=result.get("new_claims", []),
+        change_summary=result.get("change_summary", {}),
         _graph=graph,
         _config=config,
         _encoding=source.encoding,
@@ -226,6 +230,7 @@ def edit_text(
         warnings=result.get("warnings", []),
         missing_items=result.get("missing_items", []),
         new_claims=result.get("new_claims", []),
+        change_summary=result.get("change_summary", {}),
         _graph=graph,
         _config=config,
         _encoding=encoding,

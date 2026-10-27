@@ -148,6 +148,24 @@ def test_edit_result_fields_populated(tmp_path: Path, fake_model):
     result.discard()
 
 
+def test_edit_result_change_summary_populated(tmp_path: Path, fake_model):
+    """change_summary diff'ten deterministik olarak üretilmeli."""
+    target = tmp_path / "CLAUDE.md"
+    target.write_text("# Başlık\n\nUzun ve şişkin bir paragraf burada.\n", encoding="utf-8")
+
+    result = edit_file(str(target), editor_model="fake:model")
+
+    assert isinstance(result.change_summary, dict)
+    # change_summary diff'ten üretilir; diff varsa alanlar dolu olmalı.
+    if result.diff_text.strip():
+        assert "lines_added" in result.change_summary
+        assert "lines_removed" in result.change_summary
+        assert "hunks" in result.change_summary
+        assert "summary" in result.change_summary
+        assert isinstance(result.change_summary["summary"], str)
+    result.discard()
+
+
 def test_import_from_package_root():
     """`from zarif import edit_file, edit_text, EditResult` çalışmalı."""
     from zarif import EditResult as ER, edit_file as ef, edit_text as et

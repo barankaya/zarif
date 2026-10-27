@@ -233,6 +233,7 @@ def _progress_payload(graph: Any, config: dict, session_id: str, source_text: st
             "sufficient": values.get("sufficient", False),
             "warnings": values.get("warnings", []),
             "token_report": report,
+            "change_summary": values.get("change_summary", {}),
         }
     return {
         "session_id": session_id,

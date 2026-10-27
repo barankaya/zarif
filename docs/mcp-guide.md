@@ -184,7 +184,15 @@ Dönüş (hazır olduğunda, `status: "ready_to_apply"`):
   "diff": "--- a/CLAUDE.md\n+++ b/CLAUDE.md\n@@ ...",
   "sufficient": true,
   "warnings": [],
-  "token_report": { "before": 1200, "after": 410, "reduction_pct": 65.8 }
+  "token_report": { "before": 1200, "after": 410, "reduction_pct": 65.8 },
+  "change_summary": {
+    "lines_added": 12,
+    "lines_removed": 45,
+    "net_change": -33,
+    "sections_touched": ["Kurallar", "Deployment"],
+    "hunks": 3,
+    "summary": "3 bölgede 12 satır eklendi, 45 satır silindi (net -33 satır)."
+  }
 }
 ```
 
